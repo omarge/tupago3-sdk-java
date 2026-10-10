@@ -67,6 +67,13 @@ protobuf {
 
 test {
     useJUnitPlatform()
+    // Forward integration toggles from the CLI (-Dit.*) to the test JVM so the guarded
+    // RealBackendIntegrationTest can be activated on demand without affecting normal builds.
+    if (System.properties.containsKey('it.enabled')) {
+        systemProperty 'it.enabled', System.properties['it.enabled']
+        systemProperty 'it.target', System.properties['it.target']
+        systemProperty 'it.jwt', System.properties['it.jwt']
+    }
     testLogging {
         events "passed", "skipped", "failed"
         exceptionFormat "full"
