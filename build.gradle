@@ -90,6 +90,14 @@ tasks.withType(Javadoc).configureEach {
     options.encoding = 'UTF-8'
 }
 
+// Reproducible archives: deterministic JAR ordering/timestamps so artifacts are byte-stable
+// across equivalent builds (release hardening). Gradle 9 removed the `reproducibleArchives`
+// shortcut; use the granular flags on AbstractArchiveTask.
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
 // ---- Maven publication (SDK-JAVA-03) ----
 publishing {
     publications {

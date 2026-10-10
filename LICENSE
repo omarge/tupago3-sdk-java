@@ -1,0 +1,35 @@
+TUPAGO3 SDK for Java — PROPRIETARY LICENSE
+
+Copyright (c) TUPAGO. All rights reserved.
+
+This software (the "Software"), including the TUPAGO3 gRPC Java SDK client and all
+associated source code, build artifacts, documentation, and metadata, is the
+proprietary property of TUPAGO.
+
+1. Grant of License. The Software is licensed, not sold, to the Licensee for
+   INTERNAL USE ONLY within the Licensee's organization, subject to the terms
+   of this agreement. No other rights are granted.
+
+2. Restrictions. The Licensee shall NOT, without prior written authorization
+   from TUPAGO:
+   (a) redistribute, sublicense, sell, lease, or otherwise make the Software
+       available to any third party;
+   (b) publish the Software to any public repository or package registry
+       (including, without limitation, Maven Central);
+   (c) reverse engineer, decompile, or disassemble the Software, except to the
+       extent expressly permitted by applicable law;
+   (d) remove or alter any proprietary notices or labels on the Software.
+
+3. No Warranty. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+   THE SDK DOES NOT GUARANTEE A SUCCESSFUL FINANCIAL OUTCOME IN THE EVENT OF A
+   NETWORK INTERRUPTION; USERS MUST RECONCILE VIA THE PROVIDED IDEMPOTENCY KEY
+   AND STATUS QUERIES.
+
+4. Termination. This license terminates automatically if the Licensee breaches
+   any term herein. Upon termination, the Licensee must destroy all copies of
+   the Software.
+
+This file corresponds to the license declared in the published Maven POM
+(licenses.license.name = "Proprietary").
