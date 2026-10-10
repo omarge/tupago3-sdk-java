@@ -9,7 +9,10 @@ option java_outer_classname = "TupagoPaymentProto";
 // F03: gRPC peer adapter to REST/GraphQL. Every RPC delegates to the same F01
 // Application Services, so the ownership boundary, idempotency seam and
 // reference-data cache are enforced exactly once across all transports.
-// Frozen copy for the Java SDK (wire-compatible with backend3 @ 22ad947).
+// Frozen wire-compatible copy of backend3 @ 22ad947. Only the java_package option differs
+// for SDK code generation; all RPCs, fields, numbers, types and the protobuf package are
+// preserved exactly (gate: wire-level equivalence, SDK-JAVA-00-R1 correction #4).
+
 service PaymentService {
   rpc GetCliente(GetClienteRequest) returns (ClientePerfil);
   rpc GetCatalogo(GetCatalogoRequest) returns (CatalogoInstitucion);

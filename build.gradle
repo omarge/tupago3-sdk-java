@@ -7,10 +7,19 @@ group = 'com.tupago'
 version = '0.1.0'
 description = 'TUPAGO3 gRPC Java SDK client (PaymentService) — frozen contract @ backend3 22ad947'
 
+// Runtime/test JVM is selectable (default 21; certify also on 25 via -PjavaVersion=25).
+// Bytecode is ALWAYS pinned to Java 21 (release 21) so the artifact's minimum supported
+// bytecode level is preserved regardless of the runtime JVM (correction #2).
+def javaVersion = project.findProperty('javaVersion') ?: '21'
+
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(javaVersion as int)
     }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
 }
 
 repositories {

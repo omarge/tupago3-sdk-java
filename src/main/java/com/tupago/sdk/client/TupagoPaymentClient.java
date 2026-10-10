@@ -4,6 +4,7 @@ import com.tupago.sdk.auth.BearerInterceptor;
 import com.tupago.sdk.auth.CredentialProvider;
 import com.tupago.sdk.error.StatusMapper;
 import com.tupago.sdk.error.TupagoException;
+import com.tupago.sdk.error.TupagoUnknownOutcomeException;
 import com.tupago.sdk.grpc.v1.CatalogoInstitucion;
 import com.tupago.sdk.grpc.v1.ClientePerfil;
 import com.tupago.sdk.grpc.v1.CreateQrRequest;
@@ -37,7 +38,6 @@ public final class TupagoPaymentClient implements AutoCloseable {
     private final PaymentServiceBlockingStub baseStub;
     private final long deadlineMillis;
     private final RetryPolicy readRetryPolicy;
-    private final RetryPolicy createRetryPolicy = NoRetryPolicy.INSTANCE;
 
     TupagoPaymentClient(Channel channel, long deadlineMillis, RetryPolicy readRetryPolicy) {
         this.channel = channel;
@@ -74,18 +74,24 @@ public final class TupagoPaymentClient implements AutoCloseable {
     }
 
     /**
-     * Creates a QR payment. NEVER auto-retried (gate G4). On {@code ALREADY_EXISTS} or
+     * Creates a QR payment. NEVER auto-retried (gate G4). Idempotency: pass a stable
+     * {@code idempotency_key}; the server dedupes identical keys. On a transient transport error
+     * the outcome is UNKNOWN (see {@link TupagoUnknownOutcomeException}) — do NOT blind-resubmit;
+     * reuse the same key or call {@link #getQrStatus}. On {@code ALREADY_EXISTS} /
      * {@code ABORTED/TUPAGO_PENDING_RECONCILIATION}, query status with the same idempotency key.
      */
     public JsonResponse createQr(CreateQrRequest request) {
         Objects.requireNonNull(request, "request");
-        return execute("CreateQr", () -> stub().createQr(request), createRetryPolicy);
+        return executeFinancial("CreateQr", () -> stub().createQr(request));
     }
 
-    /** Creates a telefonic payment. NEVER auto-retried (gate G4). */
+    /**
+     * Creates a telefonic payment. NEVER auto-retried (gate G4). Same idempotency/unknown-outcome
+     * policy as {@link #createQr}.
+     */
     public JsonResponse createTelefonico(CreateTelefonicoRequest request) {
         Objects.requireNonNull(request, "request");
-        return execute("CreateTelefonico", () -> stub().createTelefonico(request), createRetryPolicy);
+        return executeFinancial("CreateTelefonico", () -> stub().createTelefonico(request));
     }
 
     private PaymentServiceBlockingStub stub() {
@@ -117,6 +123,23 @@ public final class TupagoPaymentClient implements AutoCloseable {
     private long backoffMillis(int attempt) {
         // Conservative fixed 250ms; BackoffRetryPolicy holds the real policy if needed.
         return 250L * attempt;
+    }
+
+    /**
+     * Execute a CREATE operation. NoRetryPolicy is enforced (gate G4). Crucially, a transient
+     * transport error on a financial create is reclassified as an UNKNOWN OUTCOME
+     * (non-retryable) so the caller can never blind-resubmit (correction #3).
+     */
+    private <T> T executeFinancial(String op, Supplier<T> call) {
+        try {
+            return call.get();
+        } catch (StatusRuntimeException sre) {
+            TupagoException te = StatusMapper.map(sre);
+            if (te.isRetryable()) {
+                throw new TupagoUnknownOutcomeException(sre.getStatus());
+            }
+            throw te;
+        }
     }
 
     @Override

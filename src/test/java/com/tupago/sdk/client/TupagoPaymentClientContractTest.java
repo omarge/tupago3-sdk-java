@@ -62,6 +62,11 @@ class TupagoPaymentClientContractTest {
                             .asRuntimeException());
                     return;
                 }
+                if (request.getIdempotencyKey().equals("timeout")) {
+                    // Transient transport failure on a CREATE => unknown financial outcome.
+                    obs.onError(Status.UNAVAILABLE.withDescription("upstream timeout").asRuntimeException());
+                    return;
+                }
                 obs.onNext(JsonResponse.newBuilder().setJson("{\"idc\":\"ABC\",\"monto\":" + request.getMonto() + "}").build());
                 obs.onCompleted();
             }
@@ -126,6 +131,15 @@ class TupagoPaymentClientContractTest {
         assertThatThrownBy(() -> client.createQr(req))
                 .isInstanceOf(TupagoAbortedException.class)
                 .satisfies(e -> assertThat(((TupagoAbortedException) e).isPendingReconciliation()).isTrue());
+        assertThat(createQrCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void createQrTransientErrorIsUnknownOutcomeNotRetried() {
+        CreateQrRequest req = CreateQrRequest.newBuilder().setIdempotencyKey("timeout").build();
+        assertThatThrownBy(() -> client.createQr(req))
+                .isInstanceOf(com.tupago.sdk.error.TupagoUnknownOutcomeException.class);
+        // NoRetryPolicy + unknown-outcome: exactly one server invocation.
         assertThat(createQrCalls.get()).isEqualTo(1);
     }
 
