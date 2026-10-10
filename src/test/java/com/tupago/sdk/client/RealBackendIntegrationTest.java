@@ -76,6 +76,17 @@ class RealBackendIntegrationTest {
     }
 
     @Test
+    void getTelefonicoStatusUnknownIsResolved() {
+        // GetTelefonicoStatus exercised individually against the REAL backend over real Protobuf.
+        try {
+            JsonResponse r = client.getTelefonicoStatus("NOEXISTE", 1L);
+            assertThat(r).isNotNull();
+        } catch (TupagoNotFoundException e) {
+            // acceptable: absent result mapped to NOT_FOUND
+        }
+    }
+
+    @Test
     void missingBearerIsUnauthenticated() {
         assertThatThrownBy(() -> anonClient.getCatalogo("301"))
                 .isInstanceOf(TupagoUnauthenticatedException.class);
