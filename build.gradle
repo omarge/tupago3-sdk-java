@@ -1,0 +1,65 @@
+plugins {
+    id 'java-library'
+    id 'com.google.protobuf' version '0.10.0'
+}
+
+group = 'com.tupago'
+version = '0.1.0'
+description = 'TUPAGO3 gRPC Java SDK client (PaymentService) — frozen contract @ backend3 22ad947'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    grpcVersion = '1.84.1'
+    protobufVersion = '4.36.2'
+    jacksonVersion = '2.18.2'
+}
+
+dependencies {
+    // gRPC (unshaded netty, aligned to backend's 1.84.1 line)
+    api "io.grpc:grpc-api:${grpcVersion}"
+    api "io.grpc:grpc-stub:${grpcVersion}"
+    api "io.grpc:grpc-protobuf:${grpcVersion}"
+    runtimeOnly "io.grpc:grpc-netty:${grpcVersion}"
+    // Protobuf runtime
+    api "com.google.protobuf:protobuf-java:${protobufVersion}"
+    // JSON handling for JsonResponse payloads
+    api "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+
+    // Testing
+    testImplementation "io.grpc:grpc-inprocess:${grpcVersion}"
+    testImplementation "io.grpc:grpc-testing:${grpcVersion}"
+    testImplementation "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
+    testImplementation 'org.assertj:assertj-core:3.26.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'
+}
+
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:${protobufVersion}" }
+    plugins {
+        grpc { artifact = "io.grpc:protoc-gen-grpc-java:${grpcVersion}" }
+    }
+    generateProtoTasks {
+        all().configureEach {
+            it.builtins { java {} }
+            it.plugins { grpc {} }
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+}
