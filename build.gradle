@@ -1,6 +1,8 @@
 plugins {
     id 'java-library'
     id 'com.google.protobuf' version '0.10.0'
+    id 'maven-publish'
+    id 'signing'
 }
 
 group = 'com.tupago'
@@ -16,6 +18,8 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(javaVersion as int)
     }
+    withSourcesJar()
+    withJavadocJar()
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -79,3 +83,58 @@ test {
         exceptionFormat "full"
     }
 }
+
+// Javadoc: avoid doclint failures on generated gRPC/proto sources (Gradle 9 / JDK 21+).
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+    options.encoding = 'UTF-8'
+}
+
+// ---- Maven publication (SDK-JAVA-03) ----
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = 'com.tupago'
+            artifactId = 'tupago3-sdk-java'
+            version = project.version
+            from components.java
+            pom {
+                name = 'TUPAGO3 SDK Java'
+                description = project.description
+                url = 'https://github.com/omarge/tupago3-sdk-java'
+                licenses {
+                    license {
+                        name = 'Proprietary'
+                        url = 'https://github.com/omarge/tupago3-sdk-java/blob/main/LICENSE'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'omarge'
+                        name = 'Omage TUPAGO'
+                        organization = 'TUPAGO'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:https://github.com/omarge/tupago3-sdk-java.git'
+                    developerConnection = 'scm:git:https://github.com/omarge/tupago3-sdk-java.git'
+                    url = 'https://github.com/omarge/tupago3-sdk-java'
+                }
+            }
+        }
+    }
+}
+
+// Signing is REQUIRED only for a real Central release (CI-provided PGP secret); locally it is
+// opt-in so publishToMavenLocal/verification builds stay GREEN without a key (gate: no embedded
+// secrets; controlled publish only with authorized credentials).
+signing {
+    required = { System.getenv('PGP_SECRET') != null || project.hasProperty('signing.keyId') }
+    def pgpSecret = System.getenv('PGP_SECRET')
+    def pgpPass = System.getenv('PGP_PASSPHRASE')
+    if (pgpSecret != null) {
+        useInMemoryPgpKeys(pgpSecret, pgpPass ?: '')
+    }
+    sign publishing.publications.maven
+}
+
