@@ -26,10 +26,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *   -Dit.ownerId=910001 (A) / 910002 (B)
  *   -Dit.foreignId=910002 (A) / 910001 (B)
  *
- * Only SAME-TOKEN reads are performed here. The backend (gRPC) pins the security context per
- * HTTP/2 connection; a single authenticated client reuses one connection for all its calls, which
- * is the realistic usage and works correctly. The negative (invalid/missing token) cases live in
- * F03NegativeIntegrationTest so they execute on an isolated connection.
+ * Only SAME-TOKEN reads are performed here. The backend resolves the security context per gRPC call
+ * from the bearer token (verified by F03R4DiagnosticTest I01-I10, including per-call credential
+ * switching on a single connection). The negative (invalid/missing token) cases live in
+ * F03NegativeIntegrationTest.
  */
 class F03MatrixIntegrationTest {
 
@@ -42,7 +42,7 @@ class F03MatrixIntegrationTest {
         Assumptions.assumeTrue(Boolean.parseBoolean(System.getProperty("it.enabled", "false")),
                 "integration disabled");
         String target = System.getProperty("it.target", "localhost:29091");
-        String jwt = System.getProperty("it.jwt", "");
+        String jwt = readToken(System.getProperty("it.jwtFile"), System.getProperty("it.jwt", ""));
         Assumptions.assumeTrue(!jwt.isBlank(), "it.jwt required for integration");
         boolean tls = Boolean.parseBoolean(System.getProperty("it.tls", "true"));
         TlsConfig tlsConfig = null;
@@ -58,6 +58,18 @@ class F03MatrixIntegrationTest {
                 .credentials((CredentialProvider) () -> jwt)
                 .tls(tlsConfig)
                 .build();
+    }
+
+    private static String readToken(String file, String fallback) {
+        if (file != null && !file.isBlank()) {
+            try {
+                return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(file)),
+                        java.nio.charset.StandardCharsets.UTF_8).trim();
+            } catch (Exception ignore) {
+                // fall through
+            }
+        }
+        return fallback == null ? "" : fallback;
     }
 
     @Test

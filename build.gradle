@@ -79,6 +79,13 @@ test {
         systemProperty 'it.jwt', System.properties['it.jwt']
         systemProperty 'it.tls', System.properties['it.tls']
         systemProperty 'it.ca', System.properties['it.ca']
+        systemProperty 'it.jwtAFile', System.properties['it.jwtAFile']
+        systemProperty 'it.jwtBFile', System.properties['it.jwtBFile']
+        systemProperty 'it.jwtFile', System.properties['it.jwtFile']
+        systemProperty 'it.jwtA', System.properties['it.jwtA']
+        systemProperty 'it.jwtB', System.properties['it.jwtB']
+        systemProperty 'it.ownerId', System.properties['it.ownerId']
+        systemProperty 'it.foreignId', System.properties['it.foreignId']
     }
     testLogging {
         events "passed", "skipped", "failed"
