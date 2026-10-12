@@ -33,4 +33,20 @@ class ChannelSecurityTest {
     void tlsChannelBuilderProducedForNonLoopback() {
         assertThat(ChannelSecurity.tls("example.com:443", TlsConfig.systemTrust())).isNotNull();
     }
+
+    @Test
+    void forTargetHonorsExplicitTlsOnLoopback() {
+        // Explicit TLS must be honored even on loopback (cert env serves gRPC TLS on
+        // 127.0.0.1:29091). No silent plaintext downgrade.
+        assertThat(ChannelSecurity.forTarget("127.0.0.1:29091", TlsConfig.systemTrust())).isNotNull();
+        assertThat(ChannelSecurity.forTarget("localhost:29091", TlsConfig.systemTrust())).isNotNull();
+    }
+
+    @Test
+    void forTargetPlaintextOnlyForLoopbackWithoutTls() {
+        assertThat(ChannelSecurity.forTarget("127.0.0.1:9090", null)).isNotNull();
+        assertThatThrownBy(() -> ChannelSecurity.forTarget("example.com:443", null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("TLS required");
+    }
 }

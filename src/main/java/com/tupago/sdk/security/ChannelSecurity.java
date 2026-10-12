@@ -78,13 +78,20 @@ public final class ChannelSecurity {
     }
 
     /**
-     * Convenience: choose transport by target. Loopback -> plaintext (local dev); otherwise -> TLS.
+     * Convenience: choose transport by target. An explicit TLS config is ALWAYS honored (even on
+     * loopback — e.g. the cert env serves gRPC TLS on 127.0.0.1:29091). Plaintext is permitted
+     * only for loopback targets WITHOUT a TLS config. Non-loopback targets without TLS fail
+     * closed (gate G8).
      */
     public static ManagedChannelBuilder<?> forTarget(String target, TlsConfig tls) {
+        if (tls != null) {
+            return tls(target, tls);
+        }
         if (isLoopback(hostOf(target))) {
             return plaintextLoopback(target);
         }
-        return tls(target, tls);
+        throw new IllegalStateException(
+                "TLS required for non-loopback target '" + target + "' (gate G8). Provide a TlsConfig.");
     }
 
     private static String hostOf(String target) {

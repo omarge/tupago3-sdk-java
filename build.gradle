@@ -77,6 +77,8 @@ test {
         systemProperty 'it.enabled', System.properties['it.enabled']
         systemProperty 'it.target', System.properties['it.target']
         systemProperty 'it.jwt', System.properties['it.jwt']
+        systemProperty 'it.tls', System.properties['it.tls']
+        systemProperty 'it.ca', System.properties['it.ca']
     }
     testLogging {
         events "passed", "skipped", "failed"

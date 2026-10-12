@@ -33,14 +33,25 @@ class RealBackendIntegrationTest {
         Assumptions.assumeTrue(Boolean.parseBoolean(enabled), "integration disabled");
         String target = System.getProperty("it.target", "127.0.0.1:9090");
         String jwt = System.getProperty("it.jwt", "");
+        String tlsFlag = System.getProperty("it.tls", "false");
+        boolean tls = Boolean.parseBoolean(tlsFlag);
+        com.tupago.sdk.security.TlsConfig tlsConfig = null;
+        if (tls) {
+            String ca = System.getProperty("it.ca", "");
+            tlsConfig = ca.isBlank()
+                    ? com.tupago.sdk.security.TlsConfig.systemTrust()
+                    : com.tupago.sdk.security.TlsConfig.trustCertChainFile(ca);
+        }
         Assumptions.assumeTrue(!jwt.isBlank(), "it.jwt required for integration");
         client = TupagoPaymentClient.builder()
                 .target(target)
                 .credentials((CredentialProvider) () -> jwt)
+                .tls(tlsConfig)
                 .build();
         anonClient = TupagoPaymentClient.builder()
                 .target(target)
                 .credentials((CredentialProvider) () -> null)
+                .tls(tlsConfig)
                 .build();
     }
 
@@ -89,6 +100,31 @@ class RealBackendIntegrationTest {
     @Test
     void missingBearerIsUnauthenticated() {
         assertThatThrownBy(() -> anonClient.getCatalogo("301"))
+                .isInstanceOf(TupagoUnauthenticatedException.class);
+    }
+
+    /**
+     * Regression for the TLS-on-loopback defect: when an explicit TlsConfig is supplied, the SDK
+     * must establish a REAL TLS channel to the loopback cert endpoint (no plaintext downgrade).
+     * Proof: a handshake reaching the server yields a UNAUTHENTICATED auth-gate response for an
+     * invalid token — NOT a transport-level failure (which a plaintext attempt against a TLS port
+     * would produce). Gated on -Dit.tls=true so it runs only against the cert environment.
+     */
+    @Test
+    void tlsOverLoopbackDoesNotDowngradeToPlaintext() {
+        String tlsFlag = System.getProperty("it.tls", "false");
+        Assumptions.assumeTrue(Boolean.parseBoolean(tlsFlag), "tls integration disabled");
+        String target = System.getProperty("it.target", "localhost:29091");
+        String ca = System.getProperty("it.ca", "");
+        com.tupago.sdk.security.TlsConfig tlsConfig = ca.isBlank()
+                ? com.tupago.sdk.security.TlsConfig.systemTrust()
+                : com.tupago.sdk.security.TlsConfig.trustCertChainFile(ca);
+        TupagoPaymentClient tlsClient = TupagoPaymentClient.builder()
+                .target(target)
+                .credentials((CredentialProvider) () -> "invalid.invalid.invalid")
+                .tls(tlsConfig)
+                .build();
+        assertThatThrownBy(() -> tlsClient.getCatalogo("TST99"))
                 .isInstanceOf(TupagoUnauthenticatedException.class);
     }
 

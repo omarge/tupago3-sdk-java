@@ -193,33 +193,14 @@ public final class TupagoPaymentClient implements AutoCloseable {
         public TupagoPaymentClient build() {
             Objects.requireNonNull(target, "target");
             Objects.requireNonNull(credentials, "credentials");
-            ManagedChannelBuilder<?> mcb;
-            if (ChannelSecurity.isLoopback(extractHost(target))) {
-                mcb = ChannelSecurity.plaintextLoopback(target);
-            } else if (tls != null) {
-                mcb = ChannelSecurity.tls(target, tls);
-            } else {
-                // Non-loopback without TLS: fail closed.
-                throw new IllegalStateException(
-                        "TLS required for non-loopback target '" + target + "' (gate G8). Provide tls(TlsConfig).");
-            }
+            // Honor explicit TLS even on loopback (the cert env exposes gRPC TLS on
+            // 127.0.0.1:29091); never silently downgrade to plaintext. forTarget fails closed
+            // for non-loopback targets that lack TLS (gate G8).
+            ManagedChannelBuilder<?> mcb = ChannelSecurity.forTarget(target, tls);
             Channel channel = mcb.build();
             Channel intercepted = io.grpc.ClientInterceptors.intercept(
                     channel, new BearerInterceptor(credentials));
             return new TupagoPaymentClient(intercepted, deadlineMillis, readRetryPolicy);
-        }
-
-        private static String extractHost(String target) {
-            String t = target;
-            int i = t.indexOf("://");
-            if (i >= 0) t = t.substring(i + 3);
-            if (t.startsWith("/")) t = t.substring(1);
-            if (t.startsWith("[")) {
-                int e = t.indexOf(']');
-                return e > 0 ? t.substring(1, e) : t;
-            }
-            int c = t.indexOf(':');
-            return c > 0 ? t.substring(0, c) : t;
         }
     }
 }
