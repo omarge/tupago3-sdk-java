@@ -57,13 +57,23 @@ final class GraphqlClienteOperations implements ClienteOperations {
                             throw new IllegalStateException(
                                     "GetCliente 'catalogoInstitucion' missing required fields");
                         }
+                        // G3: a present but non-numeric nested catalog id must fail closed, never yield id=null.
+                        Long catId = parseLong(cat.path("id"));
+                        if (catId == null) {
+                            throw new IllegalStateException("GetCliente 'catalogoInstitucion.id' must be a numeric id");
+                        }
                         catalogo = new CatalogoInstitucion(
-                                parseLong(cat.path("id")),
+                                catId,
                                 cat.path("claveInstitucion").asText(),
                                 cat.path("nombreCorto").asText());
                     }
+                    // G3: a present but non-numeric cliente id must fail closed, never yield id=null.
+                    Long cid = parseLong(c.path("id"));
+                    if (cid == null) {
+                        throw new IllegalStateException("GetCliente 'cliente.id' must be a numeric id");
+                    }
                     return new Success<>(new ClientePerfil(
-                            parseLong(c.path("id")), c.path("nombre").asText(),
+                            cid, c.path("nombre").asText(),
                             c.path("claveInstitucion").asText(), c.path("key").asText(), catalogo));
                 });
     }

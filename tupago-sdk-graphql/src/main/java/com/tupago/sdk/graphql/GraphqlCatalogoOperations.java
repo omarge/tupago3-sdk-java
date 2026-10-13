@@ -53,8 +53,13 @@ final class GraphqlCatalogoOperations implements CatalogoOperations {
                         throw new IllegalStateException(
                                 "GetCatalogo response missing required fields (id, claveInstitucion, nombreCorto)");
                     }
+                    // G3: a present but non-numeric id must fail closed, never yield id=null.
+                    Long cid = parseLong(node.path("id"));
+                    if (cid == null) {
+                        throw new IllegalStateException("GetCatalogo 'id' must be a numeric id");
+                    }
                     return new Success<>(new CatalogoInstitucion(
-                            parseLong(node.path("id")),
+                            cid,
                             node.path("claveInstitucion").asText(),
                             node.path("nombreCorto").asText()));
                 });

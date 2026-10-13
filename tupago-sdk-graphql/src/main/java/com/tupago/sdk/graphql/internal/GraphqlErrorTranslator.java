@@ -19,6 +19,21 @@ import com.fasterxml.jackson.databind.JsonNode;
  *
  * <p>{@code PAYMENT_PENDING_RECONCILIATION} is intentionally NOT an ordinary error: the transport treats
  * it as {@link com.tupago.sdk.core.result.PendingReconciliation} directly (see {@code GraphqlTransport}).</p>
+ *
+ * <p><b>Authoritative backend code taxonomy (GraphQlConfig.tupagoGraphQlErrorResolver, audited against master
+ * {@code bbf06c02}):</b> the backend currently emits only
+ * {@code IDEMPOTENCY_CONFLICT}, {@code POLICY_REVISION_CONFLICT}, {@code PAYMENT_LIMIT} and
+ * {@code PAYMENT_PENDING_RECONCILIATION}. All three amount-limit exceptions
+ * ({@code CoDiAmountLimitExceededException}, {@code PaymentLimitPolicyDisabledException},
+ * {@code PaymentLimitPolicyMissingException}) are collapsed by the backend into the single
+ * {@code PAYMENT_LIMIT} code (classification {@code bad_request}). This is a BACKEND CONTRACT LIMITATION:
+ * the SDK cannot distinguish amount-exceeded vs policy-disabled vs policy-missing from the stable code alone,
+ * and MUST NOT inspect the error message text to guess the original exception, nor invent heuristic
+ * classifications. The SDK therefore maps {@code PAYMENT_LIMIT} -> {@link PaymentError.PaymentLimitExceeded}
+ * as the authoritative behavior. The codes {@code PAYMENT_LIMIT_POLICY_DISABLED} / {@code PAYMENT_LIMIT_POLICY_MISSING}
+ * are retained ONLY as forward-compatible aliases (they are NOT currently emitted by the backend) so a future
+ * backend that emits them verbatim is handled without a code change. Tests for those aliases document them as
+ * compatibility-only, never as proof of current backend behavior.</p>
  */
 public final class GraphqlErrorTranslator {
 
@@ -32,7 +47,8 @@ public final class GraphqlErrorTranslator {
     private GraphqlErrorTranslator() {
     }
 
-    /** Map a stable GraphQL error {@code code} extension to a {@link PaymentError}; unknown -> InternalFailure. */
+    /** Map a stable GraphQL error {@code code} extension to a {@link PaymentError}; unknown -> InternalFailure.
+     *  See class javadoc for the authoritative backend code taxonomy and the PAYMENT_LIMIT semantic-collapse residual. */
     static PaymentError errorForCode(String code, String message) {
         String msg = (message == null || message.isBlank()) ? defaultMessage(code) : message;
         if (code == null) {

@@ -64,6 +64,11 @@ class GraphqlClientIntegrationTest {
         return "[{\"extensions\":{\"code\":\"" + code + "\"},\"message\":\"" + code + "\"}]";
     }
 
+    /** A valid direct MsjPagoQrResponse GraphQL payload (G1 wire contract). */
+    private static String qrOk() {
+        return "{\"createPagoQr\":{\"TYP\":1,\"v\":{\"DEV\":\"D\"},\"ic\":{\"IDC\":\"X\",\"SER\":1,\"ENC\":\"E\"},\"CRY\":\"C\"}}";
+    }
+
     private GraphqlTupagoClient client(String token, RetryPolicy retry, TimeoutConfig timeouts) {
         GraphqlClientConfig.Builder b = GraphqlClientConfig.builder()
                 .baseUri(backend.baseUri())
@@ -140,27 +145,32 @@ class GraphqlClientIntegrationTest {
     // ========================= CREATE QR (C1) =========================
 
     @Test
-    void createQrObjectMensajeSuccess() {
-        String mensaje = "{\"TYP\":1,\"ic\":{\"IDC\":\"IDC123\",\"SER\":3},\"v\":{\"DEV\":\"D1\"}}";
+    // G1: GraphQL createPagoQr returns the backend MsjPagoQrResponse object DIRECTLY (no REST mensaje/emisor/banco wrapper).
+    void createQrDirectMsjPagoQrResponseSuccess() {
+        String payload = "{\"TYP\":1,\"v\":{\"DEV\":\"DEVICE\"},\"ic\":{\"IDC\":\"IDC123\",\"SER\":7,\"ENC\":\"ENC\"},"
+                + "\"CRY\":\"CRYPT\",\"futureField\":{\"x\":1}}";
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"createPagoQr\":{\"mensaje\":" + mensaje + ",\"emisor\":\"E\",\"banco\":\"B\"}}")));
+                dataEnvelope("{\"createPagoQr\":" + payload + "}")));
         BanxicoMessage s = successValue(client().payments().createQr(qr("k1")));
+        assertThat(s.typ()).isEqualTo(1);
+        assertThat(s.deviceDev()).isEqualTo("DEVICE");
         assertThat(s.icIdc()).isEqualTo("IDC123");
-        assertThat(s.icSer()).isEqualTo(3);
+        assertThat(s.icSer()).isEqualTo(7);
+        assertThat(s.icEnc()).isEqualTo("ENC");
+        assertThat(s.rawJson()).contains("\"CRY\":\"CRYPT\"");
+        assertThat(s.rawJson()).contains("futureField");
     }
 
     @Test
     void createQrSendsIdempotencyVariable() {
-        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"createPagoQr\":{\"mensaje\":{},\"emisor\":\"E\",\"banco\":\"B\"}}")));
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, dataEnvelope(qrOk())));
         client().payments().createQr(qr("k1"));
         assertThat(readLastBody().path("variables").path("idempotencyKey").asText()).isEqualTo("k1");
     }
 
     @Test
     void createQrLegacyKeySendsNullIdempotency() {
-        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"createPagoQr\":{\"mensaje\":{},\"emisor\":\"E\",\"banco\":\"B\"}}")));
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, dataEnvelope(qrOk())));
         client().payments().createQr(CreateQrRequest.legacyUnsafe(null, new BigDecimal("10"), null, null, null, null, null, null));
         assertThat(readLastBody().path("variables").path("idempotencyKey").isNull()).isTrue();
     }
@@ -174,9 +184,38 @@ class GraphqlClientIntegrationTest {
     }
 
     @Test
-    void createQrNonObjectMensajeFailsClosed() {
+    void createQrStringFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
                 dataEnvelope("{\"createPagoQr\":\"not-an-object\"}")));
+        assertInternalFailure(client().payments().createQr(qr("k1")));
+    }
+
+    @Test
+    void createQrArrayFailsClosed() {
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
+                dataEnvelope("{\"createPagoQr\":[1,2,3]}")));
+        assertInternalFailure(client().payments().createQr(qr("k1")));
+    }
+
+    @Test
+    void createQrNullFailsClosed() {
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
+                dataEnvelope("{\"createPagoQr\":null}")));
+        assertInternalFailure(client().payments().createQr(qr("k1")));
+    }
+
+    @Test
+    void createQrEmptyObjectFailsClosed() {
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
+                dataEnvelope("{\"createPagoQr\":{}}")));
+        assertInternalFailure(client().payments().createQr(qr("k1")));
+    }
+
+    @Test
+    void createQrRestStyleWrapperNotTreatedAsSuccess() {
+        // The REST-style {mensaje, emisor, banco} wrapper is NOT the GraphQL wire contract; it must fail closed.
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
+                dataEnvelope("{\"createPagoQr\":{\"mensaje\":{\"TYP\":1},\"emisor\":\"E\",\"banco\":\"B\"}}")));
         assertInternalFailure(client().payments().createQr(qr("k1")));
     }
 
@@ -307,6 +346,23 @@ class GraphqlClientIntegrationTest {
         assertInternalFailure(client().clientes().getCliente(GetClienteRequest.of(5)));
     }
 
+    // G3: a present but non-numeric cliente id must fail closed, never yield id=null.
+    @Test
+    void getClienteNonNumericIdFailsClosed() {
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, dataEnvelope(
+                "{\"cliente\":{\"cliente\":{\"id\":\"NOT-A-NUMBER\",\"nombre\":\"N\",\"claveInstitucion\":\"C\",\"key\":\"K\"}}}")));
+        assertInternalFailure(client().clientes().getCliente(GetClienteRequest.of(5)));
+    }
+
+    // G3: a present but non-numeric nested catalogoInstitucion.id must fail closed.
+    @Test
+    void getClienteNestedCatalogNonNumericIdFailsClosed() {
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, dataEnvelope(
+                "{\"cliente\":{\"cliente\":{\"id\":\"5\",\"nombre\":\"N\",\"claveInstitucion\":\"C\",\"key\":\"K\"},"
+                        + "\"catalogoInstitucion\":{\"id\":\"BAD\",\"claveInstitucion\":\"C\",\"nombreCorto\":\"Banco\"}}}")));
+        assertInternalFailure(client().clientes().getCliente(GetClienteRequest.of(5)));
+    }
+
     // ========================= CATALOGO (C6) =========================
 
     @Test
@@ -331,6 +387,14 @@ class GraphqlClientIntegrationTest {
     void getCatalogoMalformedShapeFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
                 dataEnvelope("{\"catalogoInstitucion\":{\"id\":\"9\"}}")));
+        assertInternalFailure(client().catalogos().getCatalogo(GetCatalogoRequest.of("C")));
+    }
+
+    // G3: a present but non-numeric catalogo id must fail closed, never yield id=null.
+    @Test
+    void getCatalogoNonNumericIdFailsClosed() {
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, dataEnvelope(
+                "{\"catalogoInstitucion\":{\"id\":\"NOT-NUMERIC\",\"claveInstitucion\":\"C\",\"nombreCorto\":\"Banco\"}}")));
         assertInternalFailure(client().catalogos().getCatalogo(GetCatalogoRequest.of("C")));
     }
 
@@ -379,6 +443,7 @@ class GraphqlClientIntegrationTest {
         assertThat(r.error()).isInstanceOf(PaymentError.PolicyRevisionConflict.class);
     }
 
+    // Source-truth test: backend GraphQlConfig collapses all three amount-limit exceptions into PAYMENT_LIMIT.
     @Test
     void graphqlPaymentLimit() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, errorsEnvelope(gqlError("PAYMENT_LIMIT"))));
@@ -386,15 +451,18 @@ class GraphqlClientIntegrationTest {
         assertThat(r.error()).isInstanceOf(PaymentError.PaymentLimitExceeded.class);
     }
 
+    // The backend does NOT currently emit PAYMENT_LIMIT_POLICY_DISABLED; retained ONLY as a forward-compatible
+    // alias (see GraphqlErrorTranslator javadoc). This is NOT proof of current backend behavior.
     @Test
-    void graphqlPaymentLimitPolicyDisabled() {
+    void graphqlPaymentLimitPolicyDisabledAlias() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, errorsEnvelope(gqlError("PAYMENT_LIMIT_POLICY_DISABLED"))));
         Rejected<?> r = (Rejected<?>) client().payments().createQr(qr("k1"));
         assertThat(r.error()).isInstanceOf(PaymentError.PaymentLimitPolicyDisabled.class);
     }
 
+    // Forward-compatible alias only; backend currently emits PAYMENT_LIMIT for missing policy too.
     @Test
-    void graphqlPaymentLimitPolicyMissing() {
+    void graphqlPaymentLimitPolicyMissingAlias() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, errorsEnvelope(gqlError("PAYMENT_LIMIT_POLICY_MISSING"))));
         Rejected<?> r = (Rejected<?>) client().payments().createQr(qr("k1"));
         assertThat(r.error()).isInstanceOf(PaymentError.PaymentLimitPolicyMissing.class);
@@ -463,6 +531,33 @@ class GraphqlClientIntegrationTest {
         int before = backend.requestCount();
         client("jwt", new BackoffRetryPolicy(3, Duration.ZERO), null).payments().createQr(qr("k1"));
         assertThat(backend.requestCount() - before).isEqualTo(1);
+    }
+
+    // G4: a request-envelope serialization failure is LOCAL and DETERMINISTIC. It must surface as
+    // Rejected(InternalFailure), never as a retryable TransportFailure, and MUST NOT emit any network
+    // request (no blind retry of a read, no retry of a create).
+    @Test
+    void localEnvelopeSerializationFailsClosedNoRetry() {
+        GraphqlClientConfig cfg = GraphqlClientConfig.builder()
+                .baseUri(backend.baseUri())
+                .credentials(() -> "jwt")
+                .retryPolicy(new BackoffRetryPolicy(3, Duration.ZERO))
+                .objectMapper(new FailingObjectMapper())
+                .build();
+        GraphqlTupagoClient c = GraphqlTupagoClient.create(cfg);
+        int before = backend.requestCount();
+        PaymentOperationResult<?> r = c.payments().createQr(qr("k1"));
+        assertThat(r).isInstanceOf(Rejected.class);
+        assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.InternalFailure.class);
+        assertThat(backend.requestCount() - before).isEqualTo(0);
+    }
+
+    /** ObjectMapper that always fails to serialize, to exercise the G4 local-serialization path. */
+    private static final class FailingObjectMapper extends ObjectMapper {
+        @Override
+        public byte[] writeValueAsBytes(Object value) throws com.fasterxml.jackson.core.JsonProcessingException {
+            throw new com.fasterxml.jackson.core.JsonProcessingException("injected serialization failure") {};
+        }
     }
 
     // ========================= helpers =========================

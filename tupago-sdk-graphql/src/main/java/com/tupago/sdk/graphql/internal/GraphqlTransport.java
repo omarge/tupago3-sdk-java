@@ -95,9 +95,20 @@ public final class GraphqlTransport {
         }
 
         int maxAttempts = Math.max(1, retryPolicy.maxAttempts());
+
+        // G4: a request-envelope serialization failure is LOCAL, DETERMINISTIC and NOT a transport
+        // failure. It must fail closed as an InternalFailure BEFORE any network attempt and MUST NOT be
+        // classified as a retryable TransportUnavailable (which could, for a read, legitimately retry).
+        byte[] body;
+        try {
+            body = buildEnvelope(operationName, queryDoc, variables);
+        } catch (Exception e) {
+            return new Rejected<>(new PaymentError.InternalFailure("Failed to serialize GraphQL request"));
+        }
+
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                return sendOnce(kind, operationName, queryDoc, variables, token, onSuccess);
+                return sendOnce(kind, token, body, onSuccess);
             } catch (GraphqlTransportException te) {
                 // RetryClassifier is the SINGLE semantic retry authority. The loop only enforces the
                 // structural attempt cap; it does NOT decide financial retryability itself.
@@ -118,17 +129,8 @@ public final class GraphqlTransport {
         return new TransportFailure<>(new PaymentError.TransportUnavailable(true, "unreachable retry loop"), true);
     }
 
-    private <T> PaymentOperationResult<T> sendOnce(OperationKind kind, String operationName, String queryDoc,
-                                                   Map<String, Object> variables, String token,
+    private <T> PaymentOperationResult<T> sendOnce(OperationKind kind, String token, byte[] body,
                                                    SuccessOrPending<T> onSuccess) throws GraphqlTransportException {
-        byte[] body;
-        try {
-            body = buildEnvelope(operationName, queryDoc, variables);
-        } catch (Exception e) {
-            throw new GraphqlTransportException(
-                    new PaymentError.TransportUnavailable(false, "Failed to serialize GraphQL request"), false);
-        }
-
         HttpRequest.Builder rb = HttpRequest.newBuilder()
                 .uri(resolveUri())
                 .timeout(requestTimeout(kind))

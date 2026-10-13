@@ -51,17 +51,28 @@ final class GraphqlPaymentOperations implements PaymentOperations {
                 com.tupago.sdk.core.retry.OperationKind.CREATE_QR,
                 GraphqlQuery.CREATE_QR, GraphqlQuery.CREATE_QR_DOC, variables,
                 (data, status) -> {
-                    // data.createPagoQr is the raw MsjPagoQrResponse JSON (mensaje is an OBJECT, never a string — B1).
+                    // G1: the GraphQL mutation returns the backend MsjPagoQrResponse object DIRECTLY
+                    // (JSON scalar pass-through). There is NO REST-style wrapper (mensaje/emisor/banco).
+                    // Source of truth: TupagoGraphQlController.createPagoQr() -> createAndSendMsjPagoQR().cast(Object.class).
                     JsonNode node = data.path("createPagoQr");
                     if (absent(node)) {
                         throw new IllegalStateException("CreateQr response missing 'createPagoQr' data");
                     }
-                    JsonNode mensaje = node.path("mensaje");
-                    if (mensaje.isMissingNode() || mensaje.isNull() || !mensaje.isObject()) {
+                    if (!node.isObject()) {
+                        // Reject scalars, strings and arrays so an arbitrary payload can never be a success.
                         throw new IllegalStateException(
-                                "CreateQr 'mensaje' must be a non-null JSON object (MsjPagoQrResponse)");
+                                "CreateQr 'createPagoQr' must be a non-null JSON object (MsjPagoQrResponse)");
                     }
-                    return new Success<>(BanxicoMessage.fromJsonNode(mensaje));
+                    // Minimum authoritative shape: at least one known MsjPagoQrResponse field must be present
+                    // (TYP / ic / v / CRY). An empty or unrelated object is not a valid payload.
+                    boolean hasKnown = node.has("TYP") || node.has("ic") || node.has("v") || node.has("CRY");
+                    if (!hasKnown) {
+                        throw new IllegalStateException(
+                                "CreateQr 'createPagoQr' is not a valid MsjPagoQrResponse (missing TYP/ic/v/CRY)");
+                    }
+                    // All known typed fields (TYP, v.DEV, ic.IDC/SER/ENC, CRY) AND unknown fields are preserved
+                    // via BanxicoMessage.fromJsonNode.
+                    return new Success<>(BanxicoMessage.fromJsonNode(node));
                 });
     }
 
