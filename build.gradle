@@ -9,10 +9,11 @@ group = 'com.tupago'
 version = '0.1.0'
 description = 'TUPAGO3 gRPC Java SDK client (PaymentService) — frozen wire contract @ backend3 bbf06c02'
 
-// Runtime/test JVM is selectable (default 25; the SDK-01 core and all transport modules pin
-// release 25 so the historical gRPC root artifact can depend on :tupago-sdk-core without a
-// split bytecode baseline; SDK-04 reconciliation). Bytecode is pinned to Java 25 to match core.
-def javaVersion = project.findProperty('javaVersion') ?: '25'
+// Minimum bytecode target is Java 21 (classfile major version 65). The runtime/test JVM (Gradle
+// toolchain) is selectable via -PjavaVersion (21 or 25) so both JDK 21 and JDK 25 are certified
+// from the same source; bytecode always stays release 21. Default matches the historical root
+// baseline at 8464b4c (Java-21 bytecode compatibility), restored by SDK-04-R1.
+def javaVersion = project.findProperty('javaVersion') ?: '21'
 
 java {
     toolchain {
@@ -23,7 +24,7 @@ java {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    options.release = 25
+    options.release = 21
 }
 
 repositories {

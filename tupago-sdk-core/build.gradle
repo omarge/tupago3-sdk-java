@@ -8,15 +8,17 @@ plugins {
 group = 'com.tupago'
 version = '0.1.0'
 
+def javaVersion = project.findProperty('javaVersion') ?: '21'
+
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(javaVersion as int)
     }
     withSourcesJar()
 }
 
 tasks.withType(JavaCompile).configureEach {
-    options.release = 25
+    options.release = 21
     options.encoding = 'UTF-8'
 }
 
