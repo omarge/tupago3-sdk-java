@@ -1,53 +1,70 @@
-# TUPAGO3 SDK for Java
+# TUPAGO3 Java SDK
 
-Blocking gRPC client for the TUPAGO3 `PaymentService`, generated **1:1 from the frozen
-backend contract** (`payment.proto`, backend3 `22ad947`). The SDK is intended for
-**controlled internal distribution only** — it is NOT published to Maven Central and carries
-a **Proprietary** license (see `LICENSE`).
+Transport-neutral Java client SDK for the TUPAGO3 payments platform, covering the six canonical
+capabilities (`CreateQr`, `CreateTelefonico`, `GetQrStatus`, `GetTelefonicoStatus`, `GetCliente`,
+`GetCatalogo`). The SDK is certified on **Java 21 and Java 25** runtimes with **Java 21 bytecode**
+(classfile major version 65). It is intended for **controlled internal distribution** under a
+**Proprietary** license (see `LICENSE`).
+
+The wire contract is frozen against backend `omarge/tupagoback3` master
+`bbf06c02bda06221b2f214075a4bf2bdf3345eb0` (gRPC `payment.proto`, package `tupago.api.v1`).
 
 ---
 
-## 1. Description and limits
+## 1. Module topology
 
-The SDK exposes the six RPCs of the backend `PaymentService`:
+| Module / artifact | Role | Transport |
+|-------------------|------|-----------|
+| `tupago-sdk-core` (`com.tupago:tupago-sdk-core`) | Transport-neutral contracts: `TupagoClient`, `PaymentOperationResult`, `PaymentError`, `RetryClassifier`, `IdempotencyKey`, `CredentialProvider`, Banxico model. | none |
+| `tupago-sdk-rest` (`com.tupago:tupago-sdk-rest`) | REST adapter (`RestTupagoClient`) over JDK `HttpClient`. | REST |
+| `tupago-sdk-graphql` (`com.tupago:tupago-sdk-graphql`) | GraphQL-over-HTTP adapter (`GraphqlTupagoClient`). | GraphQL |
+| root `tupago3-sdk-java` (`com.tupago:tupago3-sdk-java`) | Modern gRPC facade (`GrpcTupagoClient`) **and** legacy gRPC compatibility client (`TupagoPaymentClient`). | gRPC |
 
-| RPC | Kind | Notes |
-|-----|------|-------|
-| `GetCliente` | read | profile + institution catalog |
-| `GetCatalogo` | read | institution catalog by `clave_institucion` |
-| `GetQrStatus` | read | Banxico status (JSON) for a QR |
-| `GetTelefonicoStatus` | read | Banxico status (JSON) for a telefónico |
-| `CreateQr` | **create** | **never auto-retried** |
-| `CreateTelefonico` | **create** | **never auto-retried** |
+Dependency direction (enforced by architecture tests):
 
-Limits:
+```
+core  ->  (no transport: no REST/GraphQL/gRPC/Spring/Netty/protobuf/grpc-java)
 
-- The contract is frozen; the SDK does not add or rename RPCs/fields.
-- `CreateQr` / `CreateTelefonico` are intentionally **non-retryable** (gate G4). A transient
-  transport failure on a create is surfaced as `TupagoUnknownOutcomeException` and must NOT be
-  blind-resubmitted; reuse the same `idempotency_key` or query status.
-- There is **no guaranteed successful financial outcome** if the network drops mid-create. The
-  SDK preserves the idempotency key and the unknown-outcome signal so the caller can reconcile.
-- No real Banxico/PSP calls are made by the SDK itself; financial creates require a reachable,
-  authorized backend in your environment.
+REST     -> core only
+GraphQL  -> core only
+gRPC(root) -> core only
+
+REST must NOT depend on GraphQL/gRPC.
+GraphQL must NOT depend on REST/gRPC.
+```
+
+---
 
 ## 2. Java requirements
 
-- **Minimum: Java 21.** Bytecode is pinned to Java 21 (`options.release = 21`).
-- Certified on **Java 21 and Java 25** runtimes.
-- Build tool: **Gradle 9.2.1** (gRPC 1.84.1, Protobuf 4.36.2).
+- **Minimum runtime / bytecode: Java 21** (`options.release = 21`).
+- Certified build/test runtimes: **Java 21** and **Java 25**.
+- Build tool: Gradle 9.x. Runtime/toolchain is selectable:
+
+```bash
+./gradlew clean build -PjavaVersion=21 --no-daemon   # JDK 21
+./gradlew clean build -PjavaVersion=25 --no-daemon   # JDK 25 (still emits Java 21 bytecode)
+```
+
+All four projects compile with `options.release = 21`. The CI matrix runs both Java 21 and
+Java 25 with `fail-fast: false`, so both legs are always reported.
+
+---
 
 ## 3. Install — Gradle
 
 ```gradle
-// settings.gradle / repositories: mavenLocal() must be present for internal distribution
 repositories {
-    mavenLocal()
-    mavenCentral()
+    mavenLocal()      // internal distribution
+    mavenCentral()    // transitive dependencies
 }
 
 dependencies {
-    implementation 'com.tupago:tupago3-sdk-java:0.1.0'
+    // pick the transport(s) you need; core is pulled transitively
+    implementation 'com.tupago:tupago-sdk-core:0.1.0'      // contracts only
+    implementation 'com.tupago:tupago-sdk-rest:0.1.0'
+    implementation 'com.tupago:tupago-sdk-graphql:0.1.0'
+    implementation 'com.tupago:tupago3-sdk-java:0.1.1'     // gRPC facade + legacy client
 }
 ```
 
@@ -63,220 +80,146 @@ dependencies {
 
 <dependency>
   <groupId>com.tupago</groupId>
-  <artifactId>tupago3-sdk-java</artifactId>
+  <artifactId>tupago-sdk-rest</artifactId>
   <version>0.1.0</version>
 </dependency>
 ```
 
-## 5. TLS configuration (fail-closed)
+---
 
-Plaintext is permitted **only** to a loopback target (`127.0.0.1`, `::1`, `localhost`). Any
-non-loopback target **requires** TLS or the client fails closed (gate G8).
+## 5. Six canonical capabilities (cross-transport)
 
-```java
-import com.tupago.sdk.security.TlsConfig;
+| Capability | REST | GraphQL | gRPC |
+|------------|------|---------|------|
+| `C1 CreateQr` | POST `/api/pago/qr` | `createQr` mutation | `CreateQr` RPC |
+| `C2 CreateTelefonico` | POST `/api/pago/telefonico` | `createTelefonico` mutation | `CreateTelefonico` RPC |
+| `C3 GetQrStatus` | GET status (Banxico JSON) | `getQrStatus` query | `GetQrStatus` RPC (Banxico JSON) |
+| `C4 GetTelefonicoStatus` | GET status (Banxico JSON) | `getTelefonicoStatus` query | `GetTelefonicoStatus` RPC (Banxico JSON) |
+| `C5 GetCliente` | GET cliente profile | `getCliente` query | `GetCliente` RPC |
+| `C6 GetCatalogo` | GET institution catalog | `getCatalogo` query | `GetCatalogo` RPC |
 
-// Public CA (system trust store):
-TlsConfig tls = TlsConfig.systemTrust();
+**Owner/account scope:** all operations are owner-scoped via the caller's JWT. gRPC status reads
+(`GetQrStatus`/`GetTelefonicoStatus`) additionally require a non-null `idCuenta`; the gRPC adapter
+rejects `idCuenta == null` locally as a `ValidationFailure` **before** any network call. REST/GraphQL
+status reads follow their transport contract for optional `idCuenta`.
 
-// Or an explicit PEM file / in-memory PEM:
-// TlsConfig tls = TlsConfig.trustCertChainFile("/etc/tupago/ca.pem");
-// TlsConfig tls = TlsConfig.trustCertChainPem(pemBytes);
+**Idempotency:** `CreateQr`/`CreateTelefonico` take a caller-provided `IdempotencyKey`. The caller's
+key is authoritative; the SDK never generates or retries it.
 
-TupagoPaymentClient client = TupagoPaymentClient.builder()
-    .target("tupago.example.com:9090")
-    .credentials(credentials)
-    .tls(tls)
-    .deadlineMillis(10_000)
-    .build();
-```
+**PendingReconciliation:** surfaced as `PendingReconciliation` when the backend returns `ABORTED`
+with the stable `TUPAGO_PENDING_RECONCILIATION` token (gRPC) or the equivalent non-transient state
+on REST/GraphQL. It is **never** retried.
 
-There is **no TLS bypass**. To a loopback target you may omit `.tls(...)` and it will use a
-plaintext channel (local development only).
+**Timeout:** every transport honors a per-request deadline (`RestClientConfig`/`GraphqlClientConfig`/
+`GrpcClientConfig` deadline settings).
 
-## 6. CredentialProvider integration
+**Retry law:** creates are **never** blind auto-retried. Reads retry only transient transport errors
+(`UNAVAILABLE`/`DEADLINE_EXCEEDED`) and only via `RetryClassifier`, which is the **sole** semantic
+retry authority. A create that fails with an unknown outcome is surfaced as a failure the caller must
+reconcile (reuse the same `IdempotencyKey` or query status) — never blind resubmit.
 
-The SDK **never embeds credentials** (gate G3). You supply a `CredentialProvider` that returns
-a current Bearer JWT per call:
-
-```java
-import com.tupago.sdk.auth.CredentialProvider;
-
-CredentialProvider credentials = () -> {
-    // Obtain a fresh JWT from your OAuth2 client-credentials flow / secret manager.
-    // NEVER hard-code the secret here.
-    return fetchTokenFromVault();
-};
-```
-
-The token is attached as an `Authorization: Bearer <jwt>` header on every RPC via an interceptor.
-Returning `null` yields `UNAUTHENTICATED` on the next call.
-
-## 7. Secure `GetCatalogo` example
-
-```java
-import com.tupago.sdk.client.TupagoPaymentClient;
-import com.tupago.sdk.security.TlsConfig;
-import com.tupago.sdk.grpc.v1.CatalogoInstitucion;
-
-try (TupagoPaymentClient client = TupagoPaymentClient.builder()
-        .target("127.0.0.1:9090")                 // loopback -> plaintext allowed
-        .credentials(credentials)
-        .deadlineMillis(5_000)
-        .build()) {
-
-    CatalogoInstitucion cat = client.getCatalogo("301");
-    System.out.println(cat.getNombreCorto());
-}
-```
-
-## 8. `GetCliente`, `GetQrStatus`, `GetTelefonicoStatus`
-
-```java
-import com.tupago.sdk.grpc.v1.ClientePerfil;
-import com.tupago.sdk.client.JsonResponseView;
-
-ClientePerfil perfil = client.getCliente(1L);
-System.out.println(perfil.getCliente().getNombre());
-
-// QR and Telefonico status return a raw Banxico JSON string.
-String idc = "...";
-long idCuenta = 1L;
-
-var qrStatus = new JsonResponseView(client.getQrStatus(idc, idCuenta));
-System.out.println(qrStatus.json());                 // raw JSON, lossless
-
-var telStatus = new JsonResponseView(client.getTelefonicoStatus(idc, idCuenta));
-var node = telStatus.parsed();                       // parsed tree (lazily)
-// Or bind to your own DTO:  MyDto dto = telStatus.as(MyDto.class);
-```
-
-## 9. `CreateQr` / `CreateTelefonico` with explicit idempotency_key
-
-Always pass a **stable, unique** `idempotency_key` you control. The server dedupes identical keys.
-
-```java
-import com.tupago.sdk.grpc.v1.CreateQrRequest;
-import com.tupago.sdk.grpc.v1.CreateTelefonicoRequest;
-
-CreateQrRequest qr = CreateQrRequest.newBuilder()
-        .setIdCuenta(1L)
-        .setMonto(150.00)
-        .setConcepto("Pago de servicio")
-        .setReferenciaNumerica(123456)
-        .setNombreCliente("Juan Perez")
-        .setEmail("juan@example.com")
-        .setTipoPago(1)
-        .setVigencia(24)
-        .setIdempotencyKey("order-0001-attempt-1")   // stable, never reused blindly
-        .build();
-var qrResp = new JsonResponseView(client.createQr(qr));
-
-CreateTelefonicoRequest tel = CreateTelefonicoRequest.newBuilder()
-        .setKey("...")
-        .setMonto(150.00)
-        .setConcepto("Pago telefónico")
-        .setReferenciaNumerica(123456)
-        .setNumeroCelular("5512345678")
-        .setVigencia(24)
-        .setIdempotencyKey("order-0002-attempt-1")
-        .build();
-var telResp = new JsonResponseView(client.createTelefonico(tel));
-```
-
-## 10. Handling `TupagoUnknownOutcomeException`
-
-A transient transport error on a create means the server *may or may not* have persisted the
-payment. The SDK raises `TupagoUnknownOutcomeException` (non-retryable) so you cannot blind-resubmit:
-
-```java
-try {
-    client.createQr(qr);
-} catch (TupagoUnknownOutcomeException ex) {
-    // DO NOT resubmit a fresh request.
-    // Reuse the same idempotency_key (server dedupes) or query status:
-    var status = client.getQrStatus(qr.getIdcOrThrowEquivalent(), qr.getIdCuenta());
-    // ... reconcile from the status JSON
-}
-```
-
-(Use the same `idc` / `idCuenta` you used originally; `CreateQrRequest` carries `id_cuenta` only,
-so track `idc` out-of-band for the status query.)
-
-## 11. Handling `TUPAGO_PENDING_RECONCILIATION`
-
-When the backend returns `ABORTED` with the description containing `TUPAGO_PENDING_RECONCILIATION`
-(this is a non-transient state), the SDK raises `TupagoAbortedException` with
-`isPendingReconciliation() == true` (gate G6).
-
-```java
-catch (TupagoAbortedException ex) {
-    if (ex.isPendingReconciliation()) {
-        // Reconcile by querying status with the SAME idempotency key. Do not resubmit a new create.
-        var status = client.getQrStatus(idc, idCuenta);
-    }
-}
-```
-
-## 12. NoRetry policy for Create operations
-
-`CreateQr` / `CreateTelefonico` use `NoRetryPolicy` internally (gate G4). The SDK performs
-**exactly one** network attempt per call. Reads use a transient-only `BackoffRetryPolicy(3)`
-(`UNAVAILABLE` / `DEADLINE_EXCEEDED` only).
-
-## 13. Exception table
-
-All exceptions extend `TupagoException` and carry the original gRPC `Status` (`code()`,
-`description()`, `status()`), plus `isRetryable()` / `isPendingReconciliation()`.
-
-| gRPC status | SDK exception | Retryable? | Pending reconciliation? |
-|-------------|---------------|-----------|--------------------------|
-| `UNAUTHENTICATED` | `TupagoUnauthenticatedException` | no | no |
-| `PERMISSION_DENIED` | `TupagoPermissionDeniedException` | no | no |
-| `INVALID_ARGUMENT` | `TupagoInvalidArgumentException` | no | no |
-| `ALREADY_EXISTS` | `TupagoAlreadyExistsException` | no | no |
-| `FAILED_PRECONDITION` | `TupagoFailedPreconditionException` | no | no |
-| `NOT_FOUND` | `TupagoNotFoundException` | no | no |
-| `ABORTED` (`TUPAGO_PENDING_RECONCILIATION`) | `TupagoAbortedException` | no | **yes** |
-| `UNAVAILABLE` / `DEADLINE_EXCEEDED` (read) | `TupagoTransientException` | **yes** | no |
-| `INTERNAL` | `TupagoInternalException` | no | no |
-| create transport failure | `TupagoUnknownOutcomeException` | no | no |
-| any other | `TupagoException` | no | no |
-
-## 14. Deadlines and resource release
-
-- Set a per-request deadline via `.deadlineMillis(...)`. The blocking stub applies it with
-  `withDeadlineAfter`.
-- `TupagoPaymentClient` is `AutoCloseable`. Always use try-with-resources (shown above) so the
-  underlying `ManagedChannel` is `shutdownNow()` cleanly. Failure to close can leak threads /
-  connections.
-
-```java
-try (TupagoPaymentClient client = TupagoPaymentClient.builder()
-        .target("127.0.0.1:9090").credentials(credentials).build()) {
-    // ... use client
-} // channel closed here
-```
-
-## 15. No JWT / secrets in logs or errors
-
-The SDK does **not** log JWTs, tokens, or secret material. Exception messages contain only the
-gRPC status code and description (e.g. `UNAUTHENTICATED: ...`). Do not wrap SDK exceptions in a way
-that prints the bearer token. Keep `CredentialProvider` implementations secret-free.
-
-## 16. Java 21 / 25 compatibility
-
-- Bytecode is emitted at Java 21 (`options.release = 21`); the artifact runs on any JVM >= 21.
-- Certified on Java 21 and Java 25. The Gradle build is parameterized:
-  `./gradlew clean build -PjavaVersion=21` and `-PjavaVersion=25`.
+**Known semantic collapses (backend-specific, not invented):**
+- GraphQL `PAYMENT_LIMIT` collapses: amount-exceeded / policy-disabled / policy-missing. The SDK
+  cannot distinguish these through a stable GraphQL code.
+- gRPC `ALREADY_EXISTS` collapses: idempotency-conflict / policy-revision-conflict → `InternalFailure`.
+- gRPC `FAILED_PRECONDITION` collapses: amount-exceeded / policy-disabled / policy-missing →
+  `PaymentLimitExceeded`.
+- gRPC `ABORTED` without the pending token → `Rejected(InternalFailure)` (fail closed).
 
 ---
 
-## Distribution status
+## 6. Modern API vs legacy gRPC API
 
-- **Internal distribution only.** Published to Maven Local (`publishToMavenLocal`) is supported.
-- **Maven Central publishing is BLOCKED** until explicit authorization, credentials, and Central
-  compliance are provided.
-- License: **Proprietary** (see `LICENSE`).
+**Modern (recommended for new applications):** the transport-neutral core model
+(`PaymentOperationResult`, `Success`/`Rejected`/`TransportFailure`/`PendingReconciliation`,
+`PaymentError`), the unified `TupagoClient` interface, and the transport adapters
+`RestTupagoClient`, `GraphqlTupagoClient`, `GrpcTupagoClient` with their `*ClientConfig` builders.
+Retry semantics are defined by `RetryClassifier`.
 
-No real financial operations are performed by the SDK or its test suites.
+**Legacy (compatibility only — do NOT adopt for new apps):** `com.tupago.sdk.client.TupagoPaymentClient`
+plus generated protobuf types (`com.tupago.sdk.grpc.v1.*`) and the `TupagoException` hierarchy. It is
+retained for backward compatibility with prior integrations and is marked deprecated where applicable.
+Its retry/exception behavior is **not** the canonical financial policy for new applications — use the
+core-facing API instead.
+
+---
+
+## 7. Minimal modern usage (gRPC facade)
+
+```java
+import com.tupago.sdk.core.auth.CredentialProvider;
+import com.tupago.sdk.core.idempotency.IdempotencyKey;
+import com.tupago.sdk.core.result.PaymentOperationResult;
+import com.tupago.sdk.grpc.GrpcTupagoClient;
+import com.tupago.sdk.grpc.GrpcClientConfig;
+import com.tupago.sdk.security.TlsConfig;
+
+CredentialProvider credentials = () -> fetchTokenFromVault(); // never hard-code secrets
+
+try (GrpcTupagoClient client = GrpcClientConfig.builder()
+        .target("tupago.example.com:9090")
+        .credentials(credentials)
+        .tls(TlsConfig.systemTrust())   // non-loopback requires TLS
+        .deadlineMillis(10_000)
+        .build()) {
+
+    var result = client.createQr(CreateQrRequest.newBuilder()
+        .setIdCuenta(1L)
+        .setMonto(150.00)
+        .setIdempotencyKey("order-0001-attempt-1")  // stable, caller-owned
+        .build());
+    // result is a core PaymentOperationResult<...>
+}
+```
+
+REST (`RestTupagoClient`/`RestClientConfig`) and GraphQL (`GraphqlTupagoClient`/`GraphqlClientConfig`)
+follow the same builder + `TupagoClient` contract.
+
+---
+
+## 8. TLS configuration (fail-closed)
+
+- REST/GraphQL: HTTPS is expected for any non-local production use.
+- gRPC: plaintext is permitted **only** to a loopback target (`127.0.0.1`, `::1`, `localhost`); any
+  non-loopback target **requires** TLS or the client fails closed. There is **no** trust-all mode and
+  **no** automatic downgrade.
+
+```java
+import com.tupago.sdk.security.TlsConfig;
+TlsConfig tls = TlsConfig.systemTrust();                 // public CA
+// TlsConfig.trustCertChainFile("/etc/tupago/ca.pem");   // explicit PEM
+```
+
+---
+
+## 9. Authorization & secrets
+
+- REST: `Authorization: Bearer <jwt>`. GraphQL: `Authorization: Bearer <jwt>`. gRPC: `authorization`
+  metadata `Bearer <jwt>`.
+- `CredentialProvider` is **runtime-supplied**, rotation-safe, and **never logged**. The SDK does not
+  sign backend JWTs itself.
+- No JWT, token, or secret is ever embedded in source, logs, or exception messages.
+
+---
+
+## 10. Distribution status
+
+- **Internal distribution only.** Modules publish to Maven Local (`publishToMavenLocal`) and to any
+  authorized internal Maven repository; consumers resolve the published coordinates above.
+- **No public Maven Central release is performed by this program.** `.github/workflows/publish.yml`
+  is a *controlled-release template*: it is triggered only on `v*` tags and performs **no publication**
+  unless a release repository and credentials are explicitly authorized and wired into the Gradle
+  publishing configuration. It is not auto-publishing. License: **Proprietary**.
+- A real public release requires a separate, explicit authorization (repository, Sonatype credentials,
+  PGP signing) and is out of scope for certification.
+
+---
+
+## 11. Limits & financial safety
+
+- The contract is frozen; the SDK does not add/rename RPCs or fields.
+- There is **no guaranteed successful financial outcome** if the network drops mid-create. The SDK
+  preserves the `IdempotencyKey` and the unknown-outcome signal so the caller can reconcile.
+- PostgreSQL/backend remains the financial authority; the SDK stores no financial state.
+- No real Banxico/PSP calls are made by the SDK itself; financial operations require a reachable,
+  authorized backend in your environment.

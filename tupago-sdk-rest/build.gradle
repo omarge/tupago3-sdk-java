@@ -4,6 +4,7 @@
 // dependency-light and free of other transport frameworks. It MUST NOT import grpc/graphql/spring.
 plugins {
     id 'java-library'
+    id 'maven-publish'
 }
 
 group = 'com.tupago'
@@ -59,4 +60,46 @@ tasks.withType(Javadoc).configureEach {
 tasks.withType(AbstractArchiveTask).configureEach {
     preserveFileTimestamps = false
     reproducibleFileOrder = true
+}
+
+// SDK consolidation (final certification): make the module independently
+// consumable from a Maven repository (internal / mavenLocal / authorized
+// release). No Maven Central deployment is added here.
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = 'com.tupago'
+            artifactId = project.name
+            version = project.version
+            from components.java
+            pom {
+                name = 'TUPAGO3 SDK Java - ' + project.name
+                description = 'TUPAGO3 Java SDK module: ' + project.name
+                url = 'https://github.com/omarge/tupago3-sdk-java'
+                licenses {
+                    license {
+                        name = 'Proprietary'
+                        url = 'https://github.com/omarge/tupago3-sdk-java/blob/main/LICENSE'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'omarge'
+                        name = 'Omage TUPAGO'
+                        organization = 'TUPAGO'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:https://github.com/omarge/tupago3-sdk-java.git'
+                    developerConnection = 'scm:git:https://github.com/omarge/tupago3-sdk-java.git'
+                    url = 'https://github.com/omarge/tupago3-sdk-java'
+                }
+            }
+        }
+    }
+    repositories {
+        if (project.hasProperty('m2repo')) {
+            maven { url = uri(project.property('m2repo')) }
+        }
+    }
 }

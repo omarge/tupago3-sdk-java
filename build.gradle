@@ -147,6 +147,11 @@ publishing {
             }
         }
     }
+    repositories {
+        if (project.hasProperty('m2repo')) {
+            maven { url = uri(project.property('m2repo')) }
+        }
+    }
 }
 
 // Signing is REQUIRED only for a real Central release (CI-provided PGP secret); locally it is

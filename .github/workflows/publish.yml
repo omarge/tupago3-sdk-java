@@ -1,8 +1,12 @@
 name: Publish
 
-# Controlled Maven Central release. Triggered ONLY on version tags and requires repository
-# secrets (OSSRH/Sonatype credentials + PGP signing). No publish occurs without these and
-# without an authorized release (gate: no publish to Central without credentials/validation).
+# CONTROLLED-RELEASE TEMPLATE. Triggered ONLY on version tags. It performs NO publication
+# unless a release repository AND credentials are explicitly authorized and wired into the
+# Gradle publishing configuration (currently no repository is configured, so `./gradlew publish`
+# has no target and will not push anywhere). Maven Central / OSSRH require an authorized
+# release: a release repository, Sonatype credentials, and PGP signing. This workflow is NOT
+# auto-publishing and must not be mistaken for a live Central deployment (gate: no public
+# release without explicit authorization + configuration).
 on:
   push:
     tags: [ 'v*' ]
