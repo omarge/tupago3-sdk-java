@@ -1,5 +1,7 @@
 # TUPAGO3 Java SDK
 
+> **Resumen (español):** SDK Java transport-neutral para la plataforma de pagos TUPAGO3. Cubre las seis capacidades canónicas (CreateQr, CreateTelefonico, GetQrStatus, GetTelefonicoStatus, GetCliente, GetCatalogo) sobre REST, GraphQL y gRPC. Certificado en Java 21 y 25. Distribución interna controlada. Licencia propietaria.
+
 Transport-neutral Java client SDK for the TUPAGO3 payments platform, covering the six canonical
 capabilities (`CreateQr`, `CreateTelefonico`, `GetQrStatus`, `GetTelefonicoStatus`, `GetCliente`,
 `GetCatalogo`). The SDK is certified on **Java 21 and Java 25** runtimes with **Java 21 bytecode**
