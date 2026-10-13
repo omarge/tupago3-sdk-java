@@ -6,11 +6,12 @@ final class RestPaths {
     private RestPaths() {
     }
 
-    // Payments (owner-scoped "usuario" variants — see SDK-02 report section: ownership evidence).
+    // Payments — ByCuenta preferred when idCuenta is explicit (program law).
+    // Usuario variants exist on backend but drop explicit ownership when idCuenta is known.
     static final String CREATE_QR = "/api/payments/msjpagoqrusuario";
-    static final String CREATE_TELEFONICO = "/api/payments/msjpagotelefonicousuario";
-    static final String GET_QR_STATUS = "/api/payments/estatusmsjqrusuario";
-    static final String GET_TELEFONICO_STATUS = "/api/payments/estatusmsjcobrotelefonicousuario";
+    static final String CREATE_TELEFONICO = "/api/payments/msjpagotelefonico";
+    static final String GET_QR_STATUS = "/api/payments/estatusmsjqr";
+    static final String GET_TELEFONICO_STATUS = "/api/payments/estatusmsjcobrotelefonico";
 
     // Owned client profile (owner-scoped via AuthorizedClienteResolver.requireOwnedCliente).
     static final String GET_CLIENTE = "/api/clientes/";
