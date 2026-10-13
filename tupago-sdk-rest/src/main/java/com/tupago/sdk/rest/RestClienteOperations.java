@@ -34,10 +34,14 @@ final class RestClienteOperations implements ClienteOperations {
         return transport.exchange(
                 com.tupago.sdk.core.retry.OperationKind.GET_CLIENTE,
                 "GET", path, null, null,
-                (node, status) -> {
-                    RestResponseDto.ClienteDto c = mapper.convertValue(node, RestResponseDto.ClienteDto.class);
-                    return new Success<>(new ClientePerfil(
-                            c.id(), c.nombre(), c.claveInstitucion(), c.key(), null));
-                });
+            (node, status) -> {
+                RestResponseDto.ClienteDto c = mapper.convertValue(node, RestResponseDto.ClienteDto.class);
+                if (c.id() == null || c.nombre() == null || c.claveInstitucion() == null || c.key() == null) {
+                    throw new IllegalStateException("GetCliente response missing required fields "
+                            + "(id, nombre, claveInstitucion, key)");
+                }
+                return new Success<>(new ClientePerfil(
+                        c.id(), c.nombre(), c.claveInstitucion(), c.key(), null));
+            });
     }
 }

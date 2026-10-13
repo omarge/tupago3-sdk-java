@@ -85,8 +85,8 @@ public final class BanxicoMessage {
         return textAt("v", "DEV");
     }
 
-    public String icSer() {
-        return textAt("ic", "SER");
+    public Integer icSer() {
+        return integerAt("ic", "SER");
     }
 
     public String icEnc() {
@@ -114,6 +114,11 @@ public final class BanxicoMessage {
     private String textAt(String parent, String field) {
         JsonNode node = raw.path(parent).path(field);
         return node.isMissingNode() ? null : node.asText();
+    }
+
+    private Integer integerAt(String parent, String field) {
+        JsonNode node = raw.path(parent).path(field);
+        return node.isMissingNode() || node.isNull() ? null : node.asInt();
     }
 
     private Integer intAt(String field) {

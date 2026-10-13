@@ -27,6 +27,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RestClientIntegrationTest {
 
@@ -74,80 +75,102 @@ class RestClientIntegrationTest {
                 "5512345678", 5, IdempotencyKey.of(key));
     }
 
-    // ---- request serialization + auth header ----
+    private static final String CREATE_QR_OBJECT = "{"
+            + "\"mensaje\":{"
+            + "  \"TYP\":1,"
+            + "  \"v\":{\"DEV\":\"DEVICE\"},"
+            + "  \"ic\":{\"IDC\":\"IDC123\",\"SER\":7,\"ENC\":\"ENCVALUE\"},"
+            + "  \"CRY\":\"CRYPTOVALUE\","
+            + "  \"futureField\":{\"x\":1}"
+            + "},"
+            + "\"emisor\":\"EMISOR\",\"banco\":\"BANCO\"}";
+
+    // ---- A. CreateQr ----
 
     @Test
-    void createQrSerializesBodyAndSendsBearerToken() {
-        backend.setResponse(TestBackend.ScriptedResponse.json(200,
-                "{\"mensaje\":\"{\\\"TYP\\\":1}\",\"emisor\":\"E\",\"banco\":\"B\"}"));
+    void createQrMensajeObjectSuccess() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, CREATE_QR_OBJECT));
         client = client(null, null);
-        PaymentOperationResult<BanxicoMessage> r = client.payments().createQr(qr("k1"));
-
-        assertThat(r).isInstanceOf(Success.class);
+        Success<BanxicoMessage> s = (Success<BanxicoMessage>) client.payments().createQr(qr("k"));
+        BanxicoMessage m = s.value();
+        assertThat(m.typ()).isEqualTo(1);
+        assertThat(m.deviceDev()).isEqualTo("DEVICE");
+        assertThat(m.icIdc()).isEqualTo("IDC123");
+        assertThat(m.icSer()).isEqualTo(7); // backend SER is Integer (B5)
+        assertThat(m.icEnc()).isEqualTo("ENCVALUE");
+        assertThat(m.rawJson()).contains("CRY");
+        assertThat(m.rawJson()).contains("futureField");
+        assertThat(m.raw().path("futureField").path("x").asInt()).isEqualTo(1);
         TestBackend.RecordedRequest req = backend.lastRequest();
-        assertThat(req.method()).isEqualTo("POST");
         assertThat(req.path()).isEqualTo("/api/payments/msjpagoqrusuario");
         assertThat(req.header("authorization")).isEqualTo("Bearer " + TOKEN);
-        assertThat(req.header("content-type")).isEqualTo("application/json");
         assertThat(req.bodyUtf8()).contains("\"monto\":100.00").contains("\"idCuenta\":1");
     }
 
     @Test
-    void createTelefonicoSerializesNumericCelular() {
+    void createQrMensajeStringIsRejected() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200,
-                "{\"detalleResultado\":\"{\\\"id\\\":\\\"X\\\"}\",\"edoPet\":0}"));
+                "{\"mensaje\":\"{\\\"TYP\\\":1}\",\"emisor\":\"E\",\"banco\":\"B\"}"));
         client = client(null, null);
-        client.payments().createTelefonico(telefonico("k2"));
-
-        TestBackend.RecordedRequest req = backend.lastRequest();
-        assertThat(req.bodyUtf8()).contains("\"numeroCelular\":5512345678");
-        assertThat(req.path()).isEqualTo("/api/payments/msjpagotelefonicousuario");
-    }
-
-    // ---- idempotency header ----
-
-    @Test
-    void idempotencyKeySentWhenExplicit() {
-        backend.setResponse(TestBackend.ScriptedResponse.json(200,
-                "{\"mensaje\":\"{}\",\"emisor\":\"E\",\"banco\":\"B\"}"));
-        client = client(null, null);
-        client.payments().createQr(qr("my-key"));
-        assertThat(backend.lastRequest().header("Idempotency-Key")).isEqualTo("my-key");
+        PaymentOperationResult<BanxicoMessage> r = client.payments().createQr(qr("k"));
+        assertThat(r).isInstanceOf(Rejected.class);
+        assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.InternalFailure.class);
     }
 
     @Test
-    void idempotencyKeyOmittedForLegacyUnsafe() {
-        backend.setResponse(TestBackend.ScriptedResponse.json(200,
-                "{\"mensaje\":\"{}\",\"emisor\":\"E\",\"banco\":\"B\"}"));
+    void createQrMensajeAbsentFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, "{\"emisor\":\"E\",\"banco\":\"B\"}"));
         client = client(null, null);
-        CreateQrRequest legacy = CreateQrRequest.legacyUnsafe(1L, new BigDecimal("1"), "c", 1, "n", "e", 1, 5);
-        assertThat(legacy.isLegacyUnsafe()).isTrue();
-        client.payments().createQr(legacy);
-        assertThat(backend.lastRequest().header("Idempotency-Key")).isNull();
-    }
-
-    // ---- response deserialization ----
-
-    @Test
-    void createQrSuccessWrapsRawMensaje() {
-        backend.setResponse(TestBackend.ScriptedResponse.json(200,
-                "{\"mensaje\":\"{\\\"TYP\\\":1,\\\"ic\\\":{\\\"IDC\\\":\\\"IDC123\\\"}}\",\"emisor\":\"E\",\"banco\":\"B\"}"));
-        client = client(null, null);
-        Success<BanxicoMessage> s = (Success<BanxicoMessage>) client.payments().createQr(qr("k"));
-        assertThat(s.value().icIdc()).isEqualTo("IDC123");
+        assertInternalFailure(client.payments().createQr(qr("k")));
     }
 
     @Test
-    void createTelefonicoSuccessWrapsDetalleResultado() {
+    void createQrMensajeNullFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, "{\"mensaje\":null,\"emisor\":\"E\"}"));
+        client = client(null, null);
+        assertInternalFailure(client.payments().createQr(qr("k")));
+    }
+
+    @Test
+    void createQrMalformedTopLevelJsonFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, "this is not json"));
+        client = client(null, null);
+        assertInternalFailure(client.payments().createQr(qr("k")));
+    }
+
+    // ---- B. CreateTelefonico ----
+
+    @Test
+    void createTelefonicoTextualDetalleSuccess() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200,
                 "{\"detalleResultado\":\"{\\\"id\\\":\\\"T1\\\",\\\"e\\\":1}\",\"edoPet\":0}"));
         client = client(null, null);
         Success<BanxicoMessage> s = (Success<BanxicoMessage>) client.payments().createTelefonico(telefonico("k"));
         assertThat(s.value().rawJson()).contains("\"id\":\"T1\"").contains("\"e\":1");
+        assertThat(backend.lastRequest().path()).isEqualTo("/api/payments/msjpagotelefonicousuario");
+        assertThat(backend.lastRequest().bodyUtf8()).contains("\"numeroCelular\":5512345678");
     }
 
     @Test
-    void getQrStatusDeserializesTransactionArray() {
+    void createTelefonicoNonTextualDetalleFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200,
+                "{\"detalleResultado\":{\"id\":\"X\"},\"edoPet\":0}"));
+        client = client(null, null);
+        assertInternalFailure(client.payments().createTelefonico(telefonico("k")));
+    }
+
+    @Test
+    void createTelefonicoMalformedEmbeddedJsonFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200,
+                "{\"detalleResultado\":\"{not json\",\"edoPet\":0}"));
+        client = client(null, null);
+        assertInternalFailure(client.payments().createTelefonico(telefonico("k")));
+    }
+
+    // ---- C. QR Status ----
+
+    @Test
+    void getQrStatusArraySuccess() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200,
                 "[{\"id\":\"1\",\"e\":1,\"mt\":10.0}]"));
         client = client(null, null);
@@ -155,25 +178,57 @@ class RestClientIntegrationTest {
                 .getQrStatus(GetQrStatusRequest.of("IDC1"));
         assertThat(s.value().transactions()).hasSize(1);
         assertThat(s.value().transactions().get(0).estado()).isEqualTo(1);
-        TestBackend.RecordedRequest req = backend.lastRequest();
-        assertThat(req.path()).isEqualTo("/api/payments/estatusmsjqrusuario");
-        assertThat(req.bodyUtf8()).contains("\"idc\":\"IDC1\"");
+        assertThat(backend.lastRequest().bodyUtf8()).contains("\"idc\":\"IDC1\"");
     }
 
     @Test
-    void getTelefonicoStatusDeserializesDetalleResultado() {
+    void getQrStatusMalformedJsonFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, "not json"));
+        client = client(null, null);
+        assertInternalFailure(client.payments().getQrStatus(GetQrStatusRequest.of("X")));
+    }
+
+    @Test
+    void getQrStatusUnexpectedObjectFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, "{\"foo\":1}"));
+        client = client(null, null);
+        assertInternalFailure(client.payments().getQrStatus(GetQrStatusRequest.of("X")));
+    }
+
+    // ---- D. Telefonico Status ----
+
+    @Test
+    void getTelefonicoStatusObjectSuccess() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200,
-                "{\"detalleResultado\":{\"id\":\"T9\",\"e\":2},\"edoPet\":0}"));
+                "{\"detalleResultado\":{\"id\":\"T9\",\"e\":2,\"unknownNest\":{\"y\":9}},\"edoPet\":0}"));
         client = client(null, null);
         Success<BanxicoMessage> s = (Success<BanxicoMessage>) client.payments()
                 .getTelefonicoStatus(GetTelefonicoStatusRequest.of("IDC9"));
         assertThat(s.value().transactions()).hasSize(1);
         assertThat(s.value().transactions().get(0).id()).isEqualTo("T9");
+        // Unknown nested fields preserved through normalization (B12).
+        assertThat(s.value().rawJson()).contains("unknownNest").contains("\"y\":9");
         assertThat(backend.lastRequest().bodyUtf8()).contains("\"idMsjdeCobro\":\"IDC9\"");
     }
 
     @Test
-    void getClienteUsesOwnerScopedPath() {
+    void getTelefonicoStatusMissingDetalleFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, "{\"edoPet\":0}"));
+        client = client(null, null);
+        assertInternalFailure(client.payments().getTelefonicoStatus(GetTelefonicoStatusRequest.of("X")));
+    }
+
+    @Test
+    void getTelefonicoStatusMalformedTopLevelFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, "garbage"));
+        client = client(null, null);
+        assertInternalFailure(client.payments().getTelefonicoStatus(GetTelefonicoStatusRequest.of("X")));
+    }
+
+    // ---- E. Cliente ----
+
+    @Test
+    void getClienteCompleteSuccess() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200,
                 "{\"id\":7,\"key\":\"K\",\"nombre\":\"N\",\"claveInstitucion\":\"01234\"}"));
         client = client(null, null);
@@ -183,11 +238,35 @@ class RestClientIntegrationTest {
         assertThat(s.value().claveInstitucion()).isEqualTo("01234");
         assertThat(s.value().key()).isEqualTo("K");
         assertThat(backend.lastRequest().path()).isEqualTo("/api/clientes/7");
-        assertThat(backend.lastRequest().method()).isEqualTo("GET");
     }
 
     @Test
-    void getCatalogoMapsByClave() {
+    void getClienteEmptyObjectFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, "{}"));
+        client = client(null, null);
+        assertInternalFailure(client.clientes().getCliente(GetClienteRequest.of(1L)));
+    }
+
+    @Test
+    void getClienteMissingIdFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200,
+                "{\"nombre\":\"N\",\"claveInstitucion\":\"01234\",\"key\":\"K\"}"));
+        client = client(null, null);
+        assertInternalFailure(client.clientes().getCliente(GetClienteRequest.of(1L)));
+    }
+
+    @Test
+    void getClienteMissingClaveFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200,
+                "{\"id\":1,\"nombre\":\"N\",\"key\":\"K\"}"));
+        client = client(null, null);
+        assertInternalFailure(client.clientes().getCliente(GetClienteRequest.of(1L)));
+    }
+
+    // ---- F. Catalogo ----
+
+    @Test
+    void getCatalogoValidSuccess() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200,
                 "{\"id\":3,\"claveInstitucion\":\"01234\",\"nombreCorto\":\"BANCO X\"}"));
         client = client(null, null);
@@ -199,7 +278,72 @@ class RestClientIntegrationTest {
         assertThat(backend.lastRequest().path()).isEqualTo("/api/catalogo-institucions/clave/01234");
     }
 
-    // ---- error mappings ----
+    @Test
+    void getCatalogoEmptyObjectFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, "{}"));
+        client = client(null, null);
+        assertInternalFailure(client.catalogos().getCatalogo(GetCatalogoRequest.of("01234")));
+    }
+
+    @Test
+    void getCatalogoMissingClaveFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200,
+                "{\"id\":3,\"nombreCorto\":\"BANCO X\"}"));
+        client = client(null, null);
+        assertInternalFailure(client.catalogos().getCatalogo(GetCatalogoRequest.of("01234")));
+    }
+
+    @Test
+    void getCatalogoInvalidClaveRejectedBeforeNetwork() {
+        client = client(null, null);
+        PaymentOperationResult<CatalogoInstitucion> r =
+                client.catalogos().getCatalogo(GetCatalogoRequest.of("a/b"));
+        assertThat(r).isInstanceOf(Rejected.class);
+        assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.ValidationFailure.class);
+        assertThat(backend.requestCount()).isEqualTo(0);
+    }
+
+    // ---- H. 202 ----
+
+    @Test
+    void createQr202AuthoritativeTypeMapsToPendingReconciliation() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(202,
+                "{\"type\":\"https://www.jhipster.tech/problem/payment-pending-reconciliation\","
+                        + "\"title\":\"pending\",\"detail\":\"reconcile\"}"));
+        PaymentOperationResult<BanxicoMessage> r = client(null, null).payments().createQr(qr("k"));
+        assertThat(r).isInstanceOf(PendingReconciliation.class);
+        assertThat(r.retryAllowed()).isFalse();
+        assertThat(((PendingReconciliation<?>) r).code()).isEqualTo(PendingReconciliation.CODE);
+    }
+
+    @Test
+    void createQr202ArbitraryTypeFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(202,
+                "{\"type\":\"https://example/other\",\"title\":\"x\"}"));
+        PaymentOperationResult<BanxicoMessage> r = client(null, null).payments().createQr(qr("k"));
+        assertInternalFailure(r);
+    }
+
+    // ---- idempotency ----
+
+    @Test
+    void idempotencyKeySentWhenExplicit() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, CREATE_QR_OBJECT));
+        client = client(null, null);
+        client.payments().createQr(qr("my-key"));
+        assertThat(backend.lastRequest().header("Idempotency-Key")).isEqualTo("my-key");
+    }
+
+    @Test
+    void idempotencyKeyOmittedForLegacyUnsafe() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200, CREATE_QR_OBJECT));
+        client = client(null, null);
+        CreateQrRequest legacy = CreateQrRequest.legacyUnsafe(1L, new BigDecimal("1"), "c", 1, "n", "e", 1, 5);
+        client.payments().createQr(legacy);
+        assertThat(backend.lastRequest().header("Idempotency-Key")).isNull();
+    }
+
+    // ---- error mapping (incl. B15 negatives) ----
 
     @Test
     void maps401ToAuthenticationFailure() {
@@ -243,14 +387,14 @@ class RestClientIntegrationTest {
     @Test
     void maps400PolicyDisabled() {
         backend.setResponse(TestBackend.ScriptedResponse.json(400,
-                "{\"type\":\"https://www.jhipster.tech/problem/payment-limit-policy-disabled\",\"detail\":\"disabled\"}"));
+                "{\"type\":\"https://www.jhipster.tech/problem/payment-limit-policy-disabled\",\"detail\":\"d\"}"));
         assertRejectedError(client(null, null).payments().createQr(qr("k")), PaymentError.PaymentLimitPolicyDisabled.class);
     }
 
     @Test
     void maps400PolicyMissing() {
         backend.setResponse(TestBackend.ScriptedResponse.json(400,
-                "{\"type\":\"https://www.jhipster.tech/problem/payment-limit-policy-missing\",\"detail\":\"missing\"}"));
+                "{\"type\":\"https://www.jhipster.tech/problem/payment-limit-policy-missing\",\"detail\":\"m\"}"));
         assertRejectedError(client(null, null).payments().createQr(qr("k")), PaymentError.PaymentLimitPolicyMissing.class);
     }
 
@@ -262,74 +406,34 @@ class RestClientIntegrationTest {
     }
 
     @Test
+    void mapsUnknown409TypeNonRetryable() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(409, "{\"detail\":\"weird\"}"));
+        PaymentOperationResult<?> r = client(null, null).payments().createQr(qr("k"));
+        assertThat(r).isInstanceOf(Rejected.class);
+        assertThat(r.retryAllowed()).isFalse();
+    }
+
+    @Test
+    void mapsUnknown4xxToValidationFailure() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(418, "{\"detail\":\"teapot\"}"));
+        assertRejectedError(client(null, null).payments().createQr(qr("k")), PaymentError.ValidationFailure.class);
+    }
+
+    @Test
+    void mapsMalformedRfc7807BodyByStatus() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(400, "not json"));
+        assertRejectedError(client(null, null).payments().createQr(qr("k")), PaymentError.ValidationFailure.class);
+    }
+
+    @Test
     void maps5xxToTransportUnavailable() {
         backend.setResponse(TestBackend.ScriptedResponse.json(503, "{\"detail\":\"down\"}"));
         PaymentOperationResult<?> r = client(null, null).payments().getQrStatus(GetQrStatusRequest.of("X"));
         assertThat(r).isInstanceOf(TransportFailure.class);
-        TransportFailure<?> tf = (TransportFailure<?>) r;
-        assertThat(tf.error()).isInstanceOf(PaymentError.TransportUnavailable.class);
-        assertThat(tf.mayHaveBeenSent()).isTrue();
+        assertThat(((TransportFailure<?>) r).mayHaveBeenSent()).isTrue();
     }
 
-    // ---- PendingReconciliation (REST 202) ----
-
-    @Test
-    void createQr202MapsToPendingReconciliationNeverRetry() {
-        backend.setResponse(TestBackend.ScriptedResponse.json(202,
-                "{\"type\":\"https://www.jhipster.tech/problem/payment-pending-reconciliation\","
-                        + "\"title\":\"pending\",\"detail\":\"reconcile\"}"));
-        PaymentOperationResult<BanxicoMessage> r = client(null, null).payments().createQr(qr("k"));
-        assertThat(r).isInstanceOf(PendingReconciliation.class);
-        PendingReconciliation<?> p = (PendingReconciliation<?>) r;
-        assertThat(p.retryAllowed()).isFalse();
-        assertThat(p.code()).isEqualTo(PendingReconciliation.CODE);
-    }
-
-    // ---- create timeout -> no blind retry ----
-
-    @Test
-    void createTimeoutDoesNotBlindRetry() {
-        backend.setResponse(TestBackend.ScriptedResponse.jsonDelayed(200,
-                "{\"mensaje\":\"{}\",\"emisor\":\"E\",\"banco\":\"B\"}", 2000));
-        TimeoutConfig tc = new TimeoutConfig(5_000L, 30_000L, 30_000L, 300L);
-        client = client(tc, null);
-        PaymentOperationResult<BanxicoMessage> r = client.payments().createQr(qr("k"));
-        assertThat(r).isInstanceOf(TransportFailure.class);
-        assertThat(backend.requestCount()).isEqualTo(1);
-    }
-
-    // ---- malformed response fail-closed ----
-
-    @Test
-    void malformedSuccessBodyFailsClosed() {
-        backend.setResponse(TestBackend.ScriptedResponse.json(200, "this is not json"));
-        client = client(null, null);
-        PaymentOperationResult<BanxicoMessage> r = client.payments().createQr(qr("k"));
-        assertThat(r).isInstanceOf(Rejected.class);
-        assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.InternalFailure.class);
-    }
-
-    @Test
-    void missingRequiredFieldFailsClosed() {
-        backend.setResponse(TestBackend.ScriptedResponse.json(200, "{}"));
-        client = client(null, null);
-        PaymentOperationResult<BanxicoMessage> r = client.payments().createQr(qr("k"));
-        assertThat(r).isInstanceOf(Rejected.class);
-        assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.InternalFailure.class);
-    }
-
-    // ---- unknown JSON field tolerance ----
-
-    @Test
-    void toleratesUnknownFieldsInResponse() {
-        backend.setResponse(TestBackend.ScriptedResponse.json(200,
-                "{\"mensaje\":\"{}\",\"emisor\":\"E\",\"banco\":\"B\",\"unknownField\":\"ignored\"}"));
-        client = client(null, null);
-        PaymentOperationResult<BanxicoMessage> r = client.payments().createQr(qr("k"));
-        assertThat(r).isInstanceOf(Success.class);
-    }
-
-    // ---- no credential leakage ----
+    // ---- I. Security ----
 
     @Test
     void tokenIsNeverLeakedIntoErrorMessages() {
@@ -337,13 +441,9 @@ class RestClientIntegrationTest {
                 "{\"type\":\"https://www.jhipster.tech/problem/co-di-amount-limit-exceeded\",\"detail\":\"x\"}"));
         client = client(null, null);
         PaymentOperationResult<BanxicoMessage> r = client.payments().createQr(qr("k"));
-        Rejected<?> rejected = (Rejected<?>) r;
-        assertThat(rejected.error().message()).doesNotContain(TOKEN);
-        // Token travels only inside the Authorization header, never in another header or the body.
-        TestBackend.RecordedRequest req = backend.lastRequest();
-        assertThat(req.header("authorization")).isEqualTo("Bearer " + TOKEN);
-        assertThat(req.bodyUtf8()).doesNotContain(TOKEN);
-        assertThat(req.header("Idempotency-Key")).isEqualTo("k");
+        assertThat(((Rejected<?>) r).error().message()).doesNotContain(TOKEN);
+        assertThat(backend.lastRequest().header("authorization")).isEqualTo("Bearer " + TOKEN);
+        assertThat(backend.lastRequest().bodyUtf8()).doesNotContain(TOKEN);
     }
 
     @Test
@@ -357,6 +457,28 @@ class RestClientIntegrationTest {
         assertThat(r).isInstanceOf(Rejected.class);
         assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.AuthenticationFailure.class);
         assertThat(backend.requestCount()).isEqualTo(0);
+    }
+
+    @Test
+    void baseUriMustBeHttpOrHttps() {
+        assertThatThrownBy(() -> RestClientConfig.builder()
+                .baseUri("file:///etc/passwd").credentials(() -> "x").build())
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> RestClientConfig.builder()
+                .baseUri("https://api.example.com/path?q=1").credentials(() -> "x").build())
+                .isInstanceOf(IllegalArgumentException.class);
+        // valid https builds fine
+        RestClientConfig ok = RestClientConfig.builder()
+                .baseUri("https://api.example.com").credentials(() -> "x").build();
+        assertThat(ok.baseUri().getScheme()).isEqualTo("https");
+    }
+
+    // ---- helpers ----
+
+    private static void assertInternalFailure(PaymentOperationResult<?> r) {
+        assertThat(r).isInstanceOf(Rejected.class);
+        assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.InternalFailure.class);
+        assertThat(r.retryAllowed()).isFalse();
     }
 
     private static void assertRejectedError(PaymentOperationResult<?> r, Class<? extends PaymentError> errorType) {

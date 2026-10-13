@@ -8,6 +8,8 @@ import com.tupago.sdk.core.config.TimeoutConfig;
 import com.tupago.sdk.core.error.PaymentError;
 import com.tupago.sdk.core.idempotency.IdempotencyKey;
 import com.tupago.sdk.core.retry.OperationKind;
+import com.tupago.sdk.core.retry.RetryClassifier;
+import com.tupago.sdk.core.retry.RetryDecision;
 import com.tupago.sdk.core.retry.RetryPolicy;
 import com.tupago.sdk.core.result.PaymentOperationResult;
 import com.tupago.sdk.core.result.Rejected;
@@ -80,20 +82,23 @@ public final class RestTransport {
                     "No bearer token available from CredentialProvider"));
         }
 
-        int maxAttempts = kind.isCreate() ? 1 : Math.max(1, retryPolicy.maxAttempts());
+        int maxAttempts = Math.max(1, retryPolicy.maxAttempts());
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 return sendOnce(kind, method, path, requestBody, idempotencyKey, token, onSuccess);
             } catch (RestTransportException te) {
-                // Creates never blind-retry; reads retry only when provably pre-execution and not last attempt.
-                if (kind.isCreate() || te.mayHaveBeenSent() || attempt == maxAttempts) {
-                    return new TransportFailure<>(te.error(), te.mayHaveBeenSent());
+                // RetryClassifier (SDK-01) is the SINGLE semantic retry authority. The loop only enforces
+                // the structural attempt cap; it does NOT decide financial retryability itself.
+                TransportFailure<T> result = new TransportFailure<>(te.error(), te.mayHaveBeenSent());
+                RetryDecision decision = RetryClassifier.classify(kind, result);
+                if (decision != RetryDecision.RETRY || attempt == maxAttempts) {
+                    return result;
                 }
                 try {
                     Thread.sleep(Math.max(0, retryPolicy.baseDelay().toMillis()));
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    return new TransportFailure<>(te.error(), te.mayHaveBeenSent());
+                    return result;
                 }
             }
         }
@@ -141,15 +146,17 @@ public final class RestTransport {
     private <T> PaymentOperationResult<T> handleResponse(HttpResponse<byte[]> resp, SuccessOrPending<T> onSuccess) {
         int status = resp.statusCode();
         if (status >= 200 && status < 300) {
-            JsonNode node = readTree(resp.body());
+            // Strict parse: a malformed/empty 2xx body is a contract violation and MUST fail closed,
+            // never be coerced into an empty object (B3).
             try {
+                JsonNode node = readTreeStrict(resp.body());
                 return onSuccess.apply(node, status);
             } catch (RuntimeException e) {
-                // Malformed/contract-violating success body -> fail closed.
                 return new Rejected<>(new PaymentError.InternalFailure(
                         "Malformed successful response body: " + e.getClass().getSimpleName()));
             }
         }
+        // Error bodies are parsed tolerantly: the HTTP status code is authoritative for classification.
         PaymentError error = RestErrorTranslator.translate(status, readTreeOrNull(resp.body()));
         if (error instanceof PaymentError.TransportUnavailable tu) {
             return new TransportFailure<>(tu, true);
@@ -188,14 +195,18 @@ public final class RestTransport {
         return Duration.ofMillis(Math.max(timeouts.requestMillis(), timeouts.readMillis()));
     }
 
-    private JsonNode readTree(byte[] body) {
+    private JsonNode readTreeStrict(byte[] body) {
         if (body == null || body.length == 0) {
-            return mapper.createObjectNode();
+            throw new IllegalStateException("Empty success body");
         }
         try {
-            return mapper.readTree(body);
+            JsonNode node = mapper.readTree(body);
+            if (node == null || node.isMissingNode()) {
+                throw new IllegalStateException("Null JSON node in success body");
+            }
+            return node;
         } catch (IOException e) {
-            return mapper.createObjectNode();
+            throw new IllegalStateException("Malformed JSON success body", e);
         }
     }
 

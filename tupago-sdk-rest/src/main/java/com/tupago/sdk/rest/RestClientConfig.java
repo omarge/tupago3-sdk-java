@@ -106,10 +106,29 @@ public final class RestClientConfig {
             if (baseUri == null) {
                 throw new IllegalStateException("baseUri is required");
             }
+            validateBaseUri(baseUri);
             if (credentials == null) {
                 throw new IllegalStateException("credentials is required");
             }
             return new RestClientConfig(this);
+        }
+    }
+
+    /** Reject non-HTTP origins and URI shapes that could leak into request construction (B14). */
+    private static void validateBaseUri(URI uri) {
+        if (uri.getScheme() == null
+                || (!uri.getScheme().equalsIgnoreCase("http") && !uri.getScheme().equalsIgnoreCase("https"))) {
+            throw new IllegalArgumentException(
+                    "baseUri scheme must be http or https (got: " + uri.getScheme() + ")");
+        }
+        if (uri.getHost() == null || uri.getHost().isBlank()) {
+            throw new IllegalArgumentException("baseUri must include a host: " + uri);
+        }
+        if (uri.getRawQuery() != null) {
+            throw new IllegalArgumentException("baseUri must not contain a query: " + uri);
+        }
+        if (uri.getRawFragment() != null) {
+            throw new IllegalArgumentException("baseUri must not contain a fragment: " + uri);
         }
     }
 }

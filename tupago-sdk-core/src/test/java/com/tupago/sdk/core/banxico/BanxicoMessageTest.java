@@ -14,7 +14,7 @@ class BanxicoMessageTest {
         assertThat(m.icIdc()).isEqualTo("IDC-42");
         assertThat(m.typ()).isEqualTo(1);
         assertThat(m.deviceDev()).isEqualTo("DEV1");
-        assertThat(m.icSer()).isEqualTo("3");
+        assertThat(m.icSer()).isEqualTo(3);
         assertThat(m.icEnc()).isEqualTo("ENC1");
     }
 

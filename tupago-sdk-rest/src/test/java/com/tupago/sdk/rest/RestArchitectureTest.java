@@ -96,4 +96,21 @@ class RestArchitectureTest {
         }
         assertThat(usesJdkClient).as("REST module must use java.net.http (not grpc/spring)").isTrue();
     }
+
+    @Test
+    void restTransportDelegatesRetryToRetryClassifier() throws IOException {
+        Path transport = Path.of("src", "main", "java", "com", "tupago", "sdk", "rest", "internal", "RestTransport.java");
+        assertThat(transport).as("RestTransport source").exists();
+        List<String> lines = Files.readAllLines(transport);
+        String source = String.join("\n", lines);
+
+        assertThat(source).as("RestTransport must import RetryClassifier").contains("import com.tupago.sdk.core.retry.RetryClassifier;");
+        assertThat(source).as("RestTransport must import RetryDecision").contains("import com.tupago.sdk.core.retry.RetryDecision;");
+        assertThat(source).as("RestTransport must consult RetryClassifier.classify").contains("RetryClassifier.classify(kind, result)");
+        assertThat(source).as("RestTransport must act on RetryDecision.RETRY").contains("RetryDecision.RETRY");
+        assertThat(source).as("RestTransport must not embed its own create-aware retry heuristic")
+                .doesNotContain("if (kind.isCreate() || te.mayHaveBeenSent())");
+        assertThat(source).as("RestTransport must not carry a standalone retry-now boolean unrelated to RetryClassifier")
+                .doesNotContain("retryNow =");
+    }
 }
