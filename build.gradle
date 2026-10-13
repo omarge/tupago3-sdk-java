@@ -50,7 +50,14 @@ dependencies {
 
     // SDK-04: reconcile the historical gRPC artifact with the transport-neutral core (no cycle:
     // core depends on nothing transport-specific, and REST/GraphQL modules do not depend on this root).
-    implementation project(':tupago-sdk-core')
+    // P1 (Final-Cert-R1): core types (TupagoClient, PaymentOperations, ClienteOperations,
+    // CatalogoOperations, CredentialProvider, TimeoutConfig, RetryPolicy, BanxicoMessage,
+    // PaymentOperationResult, IdempotencyKey) are part of the root artifact's PUBLIC API surface
+    // (GrpcTupagoClient implements TupagoClient; payments()/clientes()/catalogos() return core
+    // operation interfaces). Therefore core is an api (compile-scope) dependency, not implementation,
+    // so consumers depending only on com.tupago:tupago3-sdk-java resolve these types without an
+    // explicit core dependency.
+    api project(':tupago-sdk-core')
 
     // Testing
     testImplementation "io.grpc:grpc-inprocess:${grpcVersion}"

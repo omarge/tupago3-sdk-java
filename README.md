@@ -64,7 +64,7 @@ dependencies {
     implementation 'com.tupago:tupago-sdk-core:0.1.0'      // contracts only
     implementation 'com.tupago:tupago-sdk-rest:0.1.0'
     implementation 'com.tupago:tupago-sdk-graphql:0.1.0'
-    implementation 'com.tupago:tupago3-sdk-java:0.1.1'     // gRPC facade + legacy client
+    implementation 'com.tupago:tupago3-sdk-java:0.1.0'     // gRPC facade + legacy client
 }
 ```
 
@@ -113,10 +113,14 @@ on REST/GraphQL. It is **never** retried.
 **Timeout:** every transport honors a per-request deadline (`RestClientConfig`/`GraphqlClientConfig`/
 `GrpcClientConfig` deadline settings).
 
-**Retry law:** creates are **never** blind auto-retried. Reads retry only transient transport errors
-(`UNAVAILABLE`/`DEADLINE_EXCEEDED`) and only via `RetryClassifier`, which is the **sole** semantic
-retry authority. A create that fails with an unknown outcome is surfaced as a failure the caller must
-reconcile (reuse the same `IdempotencyKey` or query status) — never blind resubmit.
+**Retry law (`RetryClassifier` is the sole semantic authority):** creates are **never** blind
+auto-retried. A create that fails with an unknown outcome is surfaced as a failure the caller must
+reconcile (reuse the same `IdempotencyKey` or query status) — never blind resubmit. For reads, a
+transport failure (e.g. gRPC `UNAVAILABLE`/`DEADLINE_EXCEEDED`, mapped to `TransportUnavailable`) is
+retried **only** when `RetryClassifier` returns `RETRY`, which happens **only** when the transport
+proves the request was **not** sent (`mayHaveBeenSent == false`). Because the gRPC adapter maps those
+failures with `mayHaveBeenSent = true`, it effectively does **not** speculative-retry reads; reconcile
+by status query is the safe path. Reads are therefore NOT blanket-retried on every transient error.
 
 **Known semantic collapses (backend-specific, not invented):**
 - GraphQL `PAYMENT_LIMIT` collapses: amount-exceeded / policy-disabled / policy-missing. The SDK
@@ -146,40 +150,91 @@ core-facing API instead.
 
 ## 7. Minimal modern usage (gRPC facade)
 
+The modern gRPC facade returns **only** transport-neutral core types. There is no protobuf/gRPC type
+leak: `GrpcTupagoClient` implements `TupagoClient`, and `payments()`/`clientes()`/`catalogos()` return
+core operation interfaces. Configure via `GrpcClientConfig` and build via `GrpcTupagoClient.create(...)`.
+Deadlines are set through `TimeoutConfig` (passed via `timeouts(...)`); there is **no** `deadlineMillis`
+method on `GrpcClientConfig`.
+
 ```java
 import com.tupago.sdk.core.auth.CredentialProvider;
+import com.tupago.sdk.core.banxico.BanxicoMessage;
+import com.tupago.sdk.core.config.TimeoutConfig;
 import com.tupago.sdk.core.idempotency.IdempotencyKey;
+import com.tupago.sdk.core.model.CreateQrRequest;
 import com.tupago.sdk.core.result.PaymentOperationResult;
-import com.tupago.sdk.grpc.GrpcTupagoClient;
 import com.tupago.sdk.grpc.GrpcClientConfig;
+import com.tupago.sdk.grpc.GrpcTupagoClient;
 import com.tupago.sdk.security.TlsConfig;
 
-CredentialProvider credentials = () -> fetchTokenFromVault(); // never hard-code secrets
+CredentialProvider credentials = () -> fetchTokenFromVault();   // never hard-code secrets
 
-try (GrpcTupagoClient client = GrpcClientConfig.builder()
-        .target("tupago.example.com:9090")
+GrpcClientConfig config = GrpcClientConfig.builder()
+        .target("tupago.example.com:9090")        // non-loopback requires TLS
         .credentials(credentials)
-        .tls(TlsConfig.systemTrust())   // non-loopback requires TLS
-        .deadlineMillis(10_000)
-        .build()) {
+        .tls(TlsConfig.systemTrust())             // public CA trust
+        .timeouts(TimeoutConfig.defaults()
+                .withRequestMillis(10_000L)
+                .withCreateOperationMillis(10_000L))
+        .build();
 
-    var result = client.createQr(CreateQrRequest.newBuilder()
-        .setIdCuenta(1L)
-        .setMonto(150.00)
-        .setIdempotencyKey("order-0001-attempt-1")  // stable, caller-owned
-        .build());
-    // result is a core PaymentOperationResult<...>
+try (GrpcTupagoClient client = GrpcTupagoClient.create(config)) {
+    CreateQrRequest request = CreateQrRequest.of(
+            1L,
+            new BigDecimal("150.00"),
+            "Pago de servicio",
+            123456,
+            "Juan Perez",
+            "juan@example.com",
+            1,
+            24,
+            IdempotencyKey.of("order-0001"));      // stable, caller-owned key
+
+    PaymentOperationResult<BanxicoMessage> result =
+            client.payments().createQr(request);
+    // result is a core PaymentOperationResult<BanxicoMessage>; never a protobuf/gRPC type
 }
 ```
 
-REST (`RestTupagoClient`/`RestClientConfig`) and GraphQL (`GraphqlTupagoClient`/`GraphqlClientConfig`)
-follow the same builder + `TupagoClient` contract.
+REST and GraphQL use their own factories and `*ClientConfig` builders, then the same `TupagoClient`
+contract (`payments()`/`clientes()`/`catalogos()`). The gRPC-`CreateQrRequest` (protobuf) from the
+legacy client is **not** used by the modern API — use `com.tupago.sdk.core.model.CreateQrRequest`.
+
+```java
+// REST
+import com.tupago.sdk.rest.RestClientConfig;
+import com.tupago.sdk.rest.RestTupagoClient;
+
+RestClientConfig restConfig = RestClientConfig.builder()
+        .baseUri("https://tupago.example.com")
+        .credentials(credentials)
+        .build();
+try (RestTupagoClient restClient = RestTupagoClient.create(restConfig)) {
+    PaymentOperationResult<BanxicoMessage> restResult =
+            restClient.payments().createQr(request);   // reuse the CreateQrRequest built above
+}
+
+// GraphQL
+import com.tupago.sdk.graphql.GraphqlClientConfig;
+import com.tupago.sdk.graphql.GraphqlTupagoClient;
+
+GraphqlClientConfig gqlConfig = GraphqlClientConfig.builder()
+        .baseUri("https://tupago.example.com")   // adapter appends the /graphql path
+        .credentials(credentials)
+        .build();
+try (GraphqlTupagoClient gqlClient = GraphqlTupagoClient.create(gqlConfig)) {
+    PaymentOperationResult<BanxicoMessage> gqlResult =
+            gqlClient.payments().createQr(request);
+}
+```
 
 ---
 
 ## 8. TLS configuration (fail-closed)
 
-- REST/GraphQL: HTTPS is expected for any non-local production use.
+- REST/GraphQL: the adapters accept `http` or `https` base URIs. HTTPS is **required by deployment
+  policy** for any non-local production use; the SDK does **not** enforce this at the code level
+  (a plaintext `http` origin is accepted by the client and must be rejected by deployment controls).
 - gRPC: plaintext is permitted **only** to a loopback target (`127.0.0.1`, `::1`, `localhost`); any
   non-loopback target **requires** TLS or the client fails closed. There is **no** trust-all mode and
   **no** automatic downgrade.

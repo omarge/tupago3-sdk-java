@@ -23,7 +23,12 @@ jobs:
           java-version: '21'
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-      - name: Publish to Maven Central
+      - name: Run controlled publish task
+        # CONTROLLED-RELEASE TEMPLATE. This is NOT a live Maven Central deployment. `./gradlew publish`
+        # has no target unless a release repository + credentials are explicitly authorized and wired
+        # into the Gradle publishing configuration (currently none). The SONATYPE/PGP secrets below are
+        # DORMANT template inputs: they are passed only when an actual authorized public release exists;
+        # with no repository configured they are unused and nothing is published.
         run: ./gradlew publish -PjavaVersion=21 --no-daemon
         env:
           ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.SONATYPE_USERNAME }}
