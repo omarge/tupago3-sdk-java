@@ -1,0 +1,57 @@
+// Transport-neutral core of the TUPAGO3 Java SDK (SDK-01).
+// Deliberately free of grpc-java, graphql-java, Spring, Netty and any HTTP framework.
+// It only depends on Jackson for the Banxico payload model (typed known fields + raw preservation).
+plugins {
+    id 'java-library'
+}
+
+group = 'com.tupago'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    jacksonVersion = '2.18.2'
+}
+
+dependencies {
+    // JSON handling for the Banxico payload model (known typed fields + raw JsonNode preservation).
+    api "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+
+    // Testing (no network required for SDK-01 core).
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
+    testImplementation 'org.assertj:assertj-core:3.26.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
