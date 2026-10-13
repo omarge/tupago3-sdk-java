@@ -1,0 +1,60 @@
+// REST transport adapter for the TUPAGO3 Java SDK (SDK-02).
+// Depends ONLY on the transport-neutral core and Jackson. It deliberately uses the JDK built-in
+// java.net.http.HttpClient (no OkHttp, no Spring WebClient, no Netty) so the REST transport stays
+// dependency-light and free of other transport frameworks. It MUST NOT import grpc/graphql/spring.
+plugins {
+    id 'java-library'
+}
+
+group = 'com.tupago'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    jacksonVersion = '2.18.2'
+}
+
+dependencies {
+    // Transport-neutral contract + financial-safety foundation (SDK-01).
+    api project(':tupago-sdk-core')
+    // JSON (de)serialization of REST DTOs and Banxico payloads.
+    api "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+
+    // Testing (no network required; transport exercised via a stub HttpClient / in-memory server).
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
+    testImplementation 'org.assertj:assertj-core:3.26.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}

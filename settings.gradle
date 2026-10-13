@@ -1,2 +1,3 @@
 rootProject.name = 'tupago3-sdk-java'
 include 'tupago-sdk-core'
+include 'tupago-sdk-rest'
