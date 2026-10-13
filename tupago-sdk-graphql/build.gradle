@@ -1,0 +1,60 @@
+// GraphQL transport adapter for the TUPAGO3 Java SDK (SDK-03).
+// Depends ONLY on the transport-neutral core and Jackson. It uses the JDK built-in
+// java.net.http.HttpClient to issue GraphQL-over-HTTP operations (no graphql-java runtime,
+// no Spring, no Netty, no gRPC, no protobuf). It MUST NOT import grpc/rest/spring.
+plugins {
+    id 'java-library'
+}
+
+group = 'com.tupago'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    jacksonVersion = '2.18.2'
+}
+
+dependencies {
+    // Transport-neutral contract + financial-safety foundation (SDK-01/SDK-02-R1).
+    api project(':tupago-sdk-core')
+    // JSON (de)serialization of GraphQL envelope, variables and Banxico payloads.
+    api "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+
+    // Testing (no network required; transport exercised via an in-process HTTP server).
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
+    testImplementation 'org.assertj:assertj-core:3.26.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
