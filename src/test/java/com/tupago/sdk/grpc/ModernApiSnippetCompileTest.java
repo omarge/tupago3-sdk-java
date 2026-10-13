@@ -23,7 +23,8 @@ final class ModernApiSnippetCompileTest {
 
     @Test
     void modernGrpcApiSnippetCompilesAndIsWellFormed() {
-        CredentialProvider credentials = () -> "dummy";
+        // Mirrors README §7 exactly: no embedded secret, credentials resolved from env.
+        CredentialProvider credentials = () -> System.getenv("TUPAGO_JWT");   // Example only.
         TimeoutConfig timeouts = TimeoutConfig.defaults()
                 .withRequestMillis(10_000L)
                 .withCreateOperationMillis(10_000L);

@@ -104,7 +104,11 @@ rejects `idCuenta == null` locally as a `ValidationFailure` **before** any netwo
 status reads follow their transport contract for optional `idCuenta`.
 
 **Idempotency:** `CreateQr`/`CreateTelefonico` take a caller-provided `IdempotencyKey`. The caller's
-key is authoritative; the SDK never generates or retries it.
+key is authoritative; the SDK never generates or retries it. For a **NEW logical payment**, generate a
+fresh key (`IdempotencyKey.generate()` or `IdempotencyKey.of(...)`). For **retry/recovery of the SAME
+payment** after an ambiguous or unknown outcome, **reuse the original key** so the backend dedup identity
+stays stable — do **not** mint a new key, because a new key creates a new dedup identity and can allow a
+duplicate financial operation. Alternatively, reconcile by querying status.
 
 **PendingReconciliation:** surfaced as `PendingReconciliation` when the backend returns `ABORTED`
 with the stable `TUPAGO_PENDING_RECONCILIATION` token (gRPC) or the equivalent non-transient state
@@ -157,6 +161,7 @@ Deadlines are set through `TimeoutConfig` (passed via `timeouts(...)`); there is
 method on `GrpcClientConfig`.
 
 ```java
+import java.math.BigDecimal;
 import com.tupago.sdk.core.auth.CredentialProvider;
 import com.tupago.sdk.core.banxico.BanxicoMessage;
 import com.tupago.sdk.core.config.TimeoutConfig;
@@ -167,7 +172,7 @@ import com.tupago.sdk.grpc.GrpcClientConfig;
 import com.tupago.sdk.grpc.GrpcTupagoClient;
 import com.tupago.sdk.security.TlsConfig;
 
-CredentialProvider credentials = () -> fetchTokenFromVault();   // never hard-code secrets
+CredentialProvider credentials = () -> System.getenv("TUPAGO_JWT");   // Example only. Production code should retrieve credentials from an authorized secret manager / token provider.
 
 GrpcClientConfig config = GrpcClientConfig.builder()
         .target("tupago.example.com:9090")        // non-loopback requires TLS
