@@ -3,10 +3,15 @@ package com.tupago.sdk.retry;
 import com.tupago.sdk.error.TupagoException;
 
 /**
- * Decides whether (and how) an operation that failed with a {@link TupagoException} may be
- * retried. This is the single seam that enforces gate G4 (no automatic retry for CreateQr /
- * CreateTelefonico) and gate G6 (TUPAGO_PENDING_RECONCILIATION never retried).
+ * Historical gRPC retry policy (legacy). Reconciled with the SDK-01 transport-neutral core
+ * (SDK-04): the NEW core-facing gRPC transport uses {@code com.tupago.sdk.core.retry.RetryClassifier}
+ * as the SINGLE semantic retry authority and {@code com.tupago.sdk.core.retry.RetryPolicy} for the
+ * attempt bound / backoff. This legacy type remains only as a compatibility adapter for the
+ * historical {@code TupagoPaymentClient}; do not use it as a second retry authority.
+ *
+ * @deprecated use {@code com.tupago.sdk.core.retry.RetryClassifier} + core {@code RetryPolicy}.
  */
+@Deprecated(since = "SDK-04", forRemoval = true)
 public interface RetryPolicy {
 
     /**

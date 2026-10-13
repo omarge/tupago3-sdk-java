@@ -8,7 +8,11 @@ import java.util.concurrent.ThreadLocalRandom;
  * (UNAVAILABLE / DEADLINE_EXCEEDED, i.e. {@code TupagoException.isRetryable() == true}).
  * Used for idempotent read operations. It never retries create operations (callers must pass
  * {@link NoRetryPolicy} there) and never retries TUPAGO_PENDING_RECONCILIATION.
+ *
+ * @deprecated legacy retry seam; the NEW core-facing gRPC transport uses
+ *             {@code com.tupago.sdk.core.retry.RetryClassifier} + core {@code RetryPolicy}.
  */
+@Deprecated(since = "SDK-04", forRemoval = true)
 public final class BackoffRetryPolicy implements RetryPolicy {
 
     private final int maxAttempts;

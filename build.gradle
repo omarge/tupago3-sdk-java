@@ -7,12 +7,12 @@ plugins {
 
 group = 'com.tupago'
 version = '0.1.0'
-description = 'TUPAGO3 gRPC Java SDK client (PaymentService) — frozen contract @ backend3 22ad947'
+description = 'TUPAGO3 gRPC Java SDK client (PaymentService) — frozen wire contract @ backend3 bbf06c02'
 
-// Runtime/test JVM is selectable (default 21; certify also on 25 via -PjavaVersion=25).
-// Bytecode is ALWAYS pinned to Java 21 (release 21) so the artifact's minimum supported
-// bytecode level is preserved regardless of the runtime JVM (correction #2).
-def javaVersion = project.findProperty('javaVersion') ?: '21'
+// Runtime/test JVM is selectable (default 25; the SDK-01 core and all transport modules pin
+// release 25 so the historical gRPC root artifact can depend on :tupago-sdk-core without a
+// split bytecode baseline; SDK-04 reconciliation). Bytecode is pinned to Java 25 to match core.
+def javaVersion = project.findProperty('javaVersion') ?: '25'
 
 java {
     toolchain {
@@ -23,7 +23,7 @@ java {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    options.release = 21
+    options.release = 25
 }
 
 repositories {
@@ -47,9 +47,15 @@ dependencies {
     // JSON handling for JsonResponse payloads
     api "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
 
+    // SDK-04: reconcile the historical gRPC artifact with the transport-neutral core (no cycle:
+    // core depends on nothing transport-specific, and REST/GraphQL modules do not depend on this root).
+    implementation project(':tupago-sdk-core')
+
     // Testing
     testImplementation "io.grpc:grpc-inprocess:${grpcVersion}"
     testImplementation "io.grpc:grpc-testing:${grpcVersion}"
+    // Loopback Netty server for in-process gRPC integration tests (ChannelSecurity plaintext-loopback path).
+    testImplementation "io.grpc:grpc-netty:${grpcVersion}"
     testImplementation "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
     testImplementation 'org.assertj:assertj-core:3.26.3'
