@@ -320,7 +320,7 @@ class RestClientIntegrationTest {
         backend.setResponse(TestBackend.ScriptedResponse.json(202,
                 "{\"type\":\"https://example/other\",\"title\":\"x\"}"));
         PaymentOperationResult<BanxicoMessage> r = client(null, null).payments().createQr(qr("k"));
-        assertInternalFailure(r);
+        assertAmbiguousCreate(r);
     }
 
     // ---- idempotency ----
