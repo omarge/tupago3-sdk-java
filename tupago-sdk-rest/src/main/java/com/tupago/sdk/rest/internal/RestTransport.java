@@ -82,10 +82,21 @@ public final class RestTransport {
                     "No bearer token available from CredentialProvider"));
         }
 
+        byte[] serializedBody = null;
+        if (requestBody != null) {
+            try {
+                serializedBody = mapper.writeValueAsBytes(requestBody);
+            } catch (Exception e) {
+                // Local deterministic failure before any network attempt. This is not a
+                // TransportUnavailable condition and must never enter the read retry loop.
+                return new Rejected<>(new PaymentError.InternalFailure("Failed to serialize REST request body"));
+            }
+        }
+
         int maxAttempts = Math.max(1, retryPolicy.maxAttempts());
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                return sendOnce(kind, method, path, requestBody, idempotencyKey, token, onSuccess);
+                return sendOnce(kind, method, path, serializedBody, idempotencyKey, token, onSuccess);
             } catch (RestTransportException te) {
                 // RetryClassifier (SDK-01) is the SINGLE semantic retry authority. The loop only enforces
                 // the structural attempt cap; it does NOT decide financial retryability itself.
@@ -107,7 +118,7 @@ public final class RestTransport {
     }
 
     private <T> PaymentOperationResult<T> sendOnce(OperationKind kind, String method, String path,
-                                                  Object requestBody, IdempotencyKey idempotencyKey,
+                                                  byte[] requestBody, IdempotencyKey idempotencyKey,
                                                   String token, SuccessOrPending<T> onSuccess)
             throws RestTransportException {
         HttpRequest.Builder rb = HttpRequest.newBuilder()
@@ -118,14 +129,7 @@ public final class RestTransport {
 
         if (requestBody != null) {
             rb.header("Content-Type", "application/json");
-            byte[] bytes;
-            try {
-                bytes = mapper.writeValueAsBytes(requestBody);
-            } catch (Exception e) {
-                throw new RestTransportException(
-                        new PaymentError.TransportUnavailable(false, "Failed to serialize request body"), false, e);
-            }
-            rb.method(method, HttpRequest.BodyPublishers.ofByteArray(bytes));
+            rb.method(method, HttpRequest.BodyPublishers.ofByteArray(requestBody));
         } else {
             rb.method(method, HttpRequest.BodyPublishers.noBody());
         }
