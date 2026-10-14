@@ -179,11 +179,28 @@ public final class GraphqlTransport {
         }
         JsonNode errors = root.path("errors");
         if (errors.isArray() && errors.size() > 0) {
-            // Never silently accept partial data when a material error exists (section 15). Fail closed by the error.
-            return handleGraphQLErrors(errors);
+            // Never silently accept partial data when a material error exists (section 15).
+            PaymentOperationResult<T> errorResult = handleGraphQLErrors(errors);
+            // A recognized deterministic backend error remains deterministic. An unknown/unclassified
+            // application error after a financial create is ambiguous: the mutation may already have run.
+            if (kind.isCreate()
+                    && errorResult instanceof Rejected<?> rejected
+                    && rejected.error() instanceof PaymentError.InternalFailure internal) {
+                return new TransportFailure<>(
+                        new PaymentError.TransportUnavailable(
+                                true, "Ambiguous GraphQL create error: " + internal.message()),
+                        true);
+            }
+            return errorResult;
         }
         JsonNode data = root.path("data");
         if (data.isMissingNode() || data.isNull()) {
+            if (kind.isCreate()) {
+                return new TransportFailure<>(
+                        new PaymentError.TransportUnavailable(
+                                true, "Ambiguous GraphQL create response: missing data"),
+                        true);
+            }
             return new Rejected<>(new PaymentError.InternalFailure("GraphQL response missing 'data'"));
         }
         try {
