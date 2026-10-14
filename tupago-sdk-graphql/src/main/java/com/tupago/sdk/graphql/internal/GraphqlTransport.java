@@ -145,7 +145,7 @@ public final class GraphqlTransport {
         } catch (Exception e) {
             throw classify(e);
         }
-        return handleResponse(resp, onSuccess);
+        return handleResponse(kind, resp, onSuccess);
     }
 
     private byte[] buildEnvelope(String operationName, String queryDoc, Map<String, Object> variables) throws IOException {
@@ -156,7 +156,8 @@ public final class GraphqlTransport {
                 "operationName", operationName));
     }
 
-    private <T> PaymentOperationResult<T> handleResponse(HttpResponse<byte[]> resp, SuccessOrPending<T> onSuccess) {
+    private <T> PaymentOperationResult<T> handleResponse(
+            OperationKind kind, HttpResponse<byte[]> resp, SuccessOrPending<T> onSuccess) {
         int status = resp.statusCode();
         if (status < 200 || status >= 300) {
             return handleHttpError(status, resp.body());
@@ -166,6 +167,13 @@ public final class GraphqlTransport {
         try {
             root = readTreeStrict(resp.body());
         } catch (RuntimeException e) {
+            if (kind.isCreate()) {
+                return new TransportFailure<>(
+                        new PaymentError.TransportUnavailable(
+                                true,
+                                "Ambiguous GraphQL create envelope: " + e.getClass().getSimpleName()),
+                        true);
+            }
             return new Rejected<>(new PaymentError.InternalFailure(
                     "Malformed GraphQL envelope: " + e.getClass().getSimpleName()));
         }
@@ -181,6 +189,13 @@ public final class GraphqlTransport {
         try {
             return onSuccess.apply(data, status);
         } catch (RuntimeException e) {
+            if (kind.isCreate()) {
+                return new TransportFailure<>(
+                        new PaymentError.TransportUnavailable(
+                                true,
+                                "Ambiguous GraphQL create data: " + e.getClass().getSimpleName()),
+                        true);
+            }
             return new Rejected<>(new PaymentError.InternalFailure(
                     "Malformed GraphQL data payload: " + e.getClass().getSimpleName()));
         }
