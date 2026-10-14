@@ -268,13 +268,30 @@ class RestClientIntegrationTest {
     void getClienteCompleteSuccess() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200,
                 "{\"id\":7,\"key\":\"K\",\"nombre\":\"N\",\"claveInstitucion\":\"01234\"}"));
+        backend.setResponseForPath("/api/catalogo-institucions/clave/01234",
+                TestBackend.ScriptedResponse.json(200,
+                        "{\"id\":3,\"claveInstitucion\":\"01234\",\"nombreCorto\":\"BANCO X\"}"));
         client = client(null, null);
-        Success<ClientePerfil> s = (Success<ClientePerfil>) client.clientes().getCliente(GetClienteRequest.of(7L));
-        assertThat(s.value().id()).isEqualTo(7L);
-        assertThat(s.value().nombre()).isEqualTo("N");
-        assertThat(s.value().claveInstitucion()).isEqualTo("01234");
-        assertThat(s.value().key()).isEqualTo("K");
-        assertThat(backend.lastRequest().path()).isEqualTo("/api/clientes/7");
+        Success<ClientePerfil> result = (Success<ClientePerfil>) client.clientes().getCliente(GetClienteRequest.of(7L));
+        assertThat(result.value().id()).isEqualTo(7L);
+        assertThat(result.value().nombre()).isEqualTo("N");
+        assertThat(result.value().claveInstitucion()).isEqualTo("01234");
+        assertThat(result.value().key()).isEqualTo("K");
+        assertThat(result.value().catalogoInstitucion()).isNotNull();
+        assertThat(result.value().catalogoInstitucion().nombreCorto()).isEqualTo("BANCO X");
+        assertThat(backend.requestCount()).isEqualTo(2);
+        assertThat(backend.lastRequest().path()).isEqualTo("/api/catalogo-institucions/clave/01234");
+    }
+
+    @Test
+    void getClienteCatalogoMismatchFailsClosed() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(200,
+                "{\"id\":7,\"key\":\"K\",\"nombre\":\"N\",\"claveInstitucion\":\"01234\"}"));
+        backend.setResponseForPath("/api/catalogo-institucions/clave/01234",
+                TestBackend.ScriptedResponse.json(200,
+                        "{\"id\":3,\"claveInstitucion\":\"99999\",\"nombreCorto\":\"WRONG\"}"));
+        client = client(null, null);
+        assertInternalFailure(client.clientes().getCliente(GetClienteRequest.of(7L)));
     }
 
     @Test
