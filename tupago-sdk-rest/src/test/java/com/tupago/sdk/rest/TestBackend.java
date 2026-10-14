@@ -55,6 +55,7 @@ final class TestBackend {
     private final AtomicInteger requestCount = new AtomicInteger(0);
     private final AtomicReference<RecordedRequest> lastRequest = new AtomicReference<>();
     private volatile ScriptedResponse response = ScriptedResponse.json(200, "{}");
+    private final java.util.Map<String, ScriptedResponse> pathResponses = new java.util.concurrent.ConcurrentHashMap<>();
 
     TestBackend() throws IOException {
         this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -75,7 +76,7 @@ final class TestBackend {
         requestCount.incrementAndGet();
         lastRequest.set(recorded);
 
-        ScriptedResponse r = response;
+        ScriptedResponse r = pathResponses.getOrDefault(exchange.getRequestURI().getPath(), response);
         if (r.delayMillis > 0) {
             try {
                 Thread.sleep(r.delayMillis);
@@ -95,6 +96,10 @@ final class TestBackend {
 
     void setResponse(ScriptedResponse r) {
         this.response = r;
+    }
+
+    void setResponseForPath(String path, ScriptedResponse r) {
+        pathResponses.put(path, r);
     }
 
     int port() {
