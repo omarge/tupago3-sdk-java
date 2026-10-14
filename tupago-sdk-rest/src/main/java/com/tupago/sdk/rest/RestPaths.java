@@ -6,10 +6,13 @@ final class RestPaths {
     private RestPaths() {
     }
 
-    // Payments — ByCuenta preferred when idCuenta is explicit (program law).
-    // Usuario variants exist on backend but drop explicit ownership when idCuenta is known.
+    // Payments — authority must match gRPC/GraphQL (resolveSingleOwnedCliente).
+    // C2 MUST use the "usuario" variant. The non-usuario variant uses requireOwnedClienteByKey
+    // and is a DIFFERENT authority contract.
     static final String CREATE_QR = "/api/payments/msjpagoqrusuario";
-    static final String CREATE_TELEFONICO = "/api/payments/msjpagotelefonico";
+    static final String CREATE_TELEFONICO = "/api/payments/msjpagotelefonicousuario";
+
+    // C3/C4 status: ByCuenta preferred when idCuenta is explicit.
     static final String GET_QR_STATUS = "/api/payments/estatusmsjqr";
     static final String GET_TELEFONICO_STATUS = "/api/payments/estatusmsjcobrotelefonico";
 
