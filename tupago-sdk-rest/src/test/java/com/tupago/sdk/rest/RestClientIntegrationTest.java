@@ -470,6 +470,22 @@ class RestClientIntegrationTest {
         assertThat(((TransportFailure<?>) r).mayHaveBeenSent()).isTrue();
     }
 
+    @Test
+    void createQrRedirectIsAmbiguousAndNeverRetried() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(307, ""));
+        PaymentOperationResult<?> result = client(null, null).payments().createQr(qr("redirect-qr"));
+        assertAmbiguousCreate(result);
+        assertThat(backend.requestCount()).isEqualTo(1);
+    }
+
+    @Test
+    void createTelefonicoRedirectIsAmbiguousAndNeverRetried() {
+        backend.setResponse(TestBackend.ScriptedResponse.json(302, ""));
+        PaymentOperationResult<?> result = client(null, null).payments().createTelefonico(telefonico("redirect-tel"));
+        assertAmbiguousCreate(result);
+        assertThat(backend.requestCount()).isEqualTo(1);
+    }
+
     // ---- I. Security ----
 
     @Test
