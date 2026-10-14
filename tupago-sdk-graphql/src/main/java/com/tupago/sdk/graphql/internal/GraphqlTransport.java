@@ -145,7 +145,7 @@ public final class GraphqlTransport {
         } catch (Exception e) {
             throw classify(e);
         }
-        return handleResponse(resp, onSuccess);
+        return handleResponse(kind, resp, onSuccess);
     }
 
     private byte[] buildEnvelope(String operationName, String queryDoc, Map<String, Object> variables) throws IOException {
@@ -156,33 +156,31 @@ public final class GraphqlTransport {
                 "operationName", operationName));
     }
 
-    private <T> PaymentOperationResult<T> handleResponse(HttpResponse<byte[]> resp, SuccessOrPending<T> onSuccess) {
+    private <T> PaymentOperationResult<T> handleResponse(OperationKind kind, HttpResponse<byte[]> resp, SuccessOrPending<T> onSuccess) {
         int status = resp.statusCode();
         if (status < 200 || status >= 300) {
-            return handleHttpError(status, resp.body());
+            return handleHttpError(kind, status, resp.body());
         }
         // Strict parse: a malformed/empty 2xx body is a contract violation and MUST fail closed (B3/B21).
         JsonNode root;
         try {
             root = readTreeStrict(resp.body());
         } catch (RuntimeException e) {
-            return new Rejected<>(new PaymentError.InternalFailure(
-                    "Malformed GraphQL envelope: " + e.getClass().getSimpleName()));
+            return malformedSuccess(kind, "Malformed GraphQL envelope: " + e.getClass().getSimpleName());
         }
         JsonNode errors = root.path("errors");
         if (errors.isArray() && errors.size() > 0) {
-            // Never silently accept partial data when a material error exists (section 15). Fail closed by the error.
-            return handleGraphQLErrors(errors);
+            // Never silently accept partial data when a material error exists (section 15).
+            return handleGraphQLErrors(kind, errors);
         }
         JsonNode data = root.path("data");
         if (data.isMissingNode() || data.isNull()) {
-            return new Rejected<>(new PaymentError.InternalFailure("GraphQL response missing 'data'"));
+            return malformedSuccess(kind, "GraphQL response missing 'data'");
         }
         try {
             return onSuccess.apply(data, status);
         } catch (RuntimeException e) {
-            return new Rejected<>(new PaymentError.InternalFailure(
-                    "Malformed GraphQL data payload: " + e.getClass().getSimpleName()));
+            return malformedSuccess(kind, "Malformed GraphQL data payload: " + e.getClass().getSimpleName());
         }
     }
 
@@ -191,7 +189,7 @@ public final class GraphqlTransport {
      * partial data and maps to {@link PendingReconciliation} (never retried, never resubmitted). Any other
      * error maps to a {@link Rejected} of the appropriate {@link PaymentError}; unknown codes fail closed.
      */
-    private <T> PaymentOperationResult<T> handleGraphQLErrors(JsonNode errors) {
+    private <T> PaymentOperationResult<T> handleGraphQLErrors(OperationKind kind, JsonNode errors) {
         String pendingMessage = null;
         for (JsonNode err : errors) {
             if (GraphqlErrorTranslator.CODE_PAYMENT_PENDING_RECONCILIATION.equals(GraphqlErrorTranslator.extractCode(err))) {
@@ -205,19 +203,41 @@ public final class GraphqlTransport {
         for (JsonNode err : errors) {
             String code = GraphqlErrorTranslator.extractCode(err);
             if (code != null) {
-                return new Rejected<>(GraphqlErrorTranslator.errorForCode(
-                        code, GraphqlErrorTranslator.extractMessage(err, code)));
+                PaymentError error = GraphqlErrorTranslator.errorForCode(
+                        code, GraphqlErrorTranslator.extractMessage(err, code));
+                if (kind.isCreate() && error instanceof PaymentError.InternalFailure) {
+                    return new TransportFailure<>(
+                            new PaymentError.TransportUnavailable(
+                                    true, "Ambiguous GraphQL create error code: " + code),
+                            true);
+                }
+                return new Rejected<>(error);
             }
+        }
+        if (kind.isCreate()) {
+            return new TransportFailure<>(
+                    new PaymentError.TransportUnavailable(
+                            true, "GraphQL create error without a stable code extension"),
+                    true);
         }
         return new Rejected<>(new PaymentError.InternalFailure("GraphQL errors without a stable code extension"));
     }
 
-    private <T> PaymentOperationResult<T> handleHttpError(int status, byte[] body) {
+    private <T> PaymentOperationResult<T> malformedSuccess(OperationKind kind, String message) {
+        if (kind.isCreate()) {
+            return new TransportFailure<>(
+                    new PaymentError.TransportUnavailable(true, message),
+                    true);
+        }
+        return new Rejected<>(new PaymentError.InternalFailure(message));
+    }
+
+    private <T> PaymentOperationResult<T> handleHttpError(OperationKind kind, int status, byte[] body) {
         JsonNode root = readTreeOrNull(body);
         if (root != null && root.has("errors")) {
             JsonNode errors = root.get("errors");
             if (errors.isArray() && errors.size() > 0) {
-                return handleGraphQLErrors(errors);
+                return handleGraphQLErrors(kind, errors);
             }
         }
         PaymentError error = GraphqlErrorTranslator.errorForStatus(status, httpStatusMessage(root, status));
