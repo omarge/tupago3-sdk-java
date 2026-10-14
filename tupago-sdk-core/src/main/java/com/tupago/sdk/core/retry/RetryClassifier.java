@@ -21,8 +21,8 @@ import com.tupago.sdk.core.result.TransportFailure;
  *   <li><b>TransportUnavailable</b>:
  *       <ul>
  *         <li>On a <b>CREATE</b>: <b>NEVER</b> blind-retry. (Even if the request provably never left the
- *             client, a create must not be auto-resubmitted by the SDK; the caller may retry manually with a
- *             NEW idempotency key, but that is an explicit business decision, not an SDK blind retry.)</li>
+ *             client, a create must not be auto-resubmitted by the SDK; the caller may explicitly reconcile or re-invoke using the SAME original idempotency key.
+ *             A NEW key is reserved for a genuinely new logical payment, never for uncertainty about the original one.)</li>
  *         <li>On a <b>READ</b>: retry ONLY when {@code mayHaveBeenSent == false} (proven pre-execution
  *             transport failure). If the request may have been sent, reconcile instead.</li>
  *       </ul>
