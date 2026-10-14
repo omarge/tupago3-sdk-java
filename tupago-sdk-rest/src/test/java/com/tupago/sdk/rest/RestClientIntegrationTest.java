@@ -474,6 +474,14 @@ class RestClientIntegrationTest {
 
     // ---- helpers ----
 
+    private static void assertAmbiguousCreate(PaymentOperationResult<?> r) {
+        assertThat(r).isInstanceOf(TransportFailure.class);
+        TransportFailure<?> tf = (TransportFailure<?>) r;
+        assertThat(tf.error()).isInstanceOf(PaymentError.TransportUnavailable.class);
+        assertThat(tf.mayHaveBeenSent()).isTrue();
+        assertThat(tf.retryAllowed()).isFalse();
+    }
+
     private static void assertInternalFailure(PaymentOperationResult<?> r) {
         assertThat(r).isInstanceOf(Rejected.class);
         assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.InternalFailure.class);
