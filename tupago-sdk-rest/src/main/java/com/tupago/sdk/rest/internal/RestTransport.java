@@ -140,10 +140,11 @@ public final class RestTransport {
         } catch (Exception e) {
             throw classify(e);
         }
-        return handleResponse(resp, onSuccess);
+        return handleResponse(kind, resp, onSuccess);
     }
 
-    private <T> PaymentOperationResult<T> handleResponse(HttpResponse<byte[]> resp, SuccessOrPending<T> onSuccess) {
+    private <T> PaymentOperationResult<T> handleResponse(
+            OperationKind kind, HttpResponse<byte[]> resp, SuccessOrPending<T> onSuccess) {
         int status = resp.statusCode();
         if (status >= 200 && status < 300) {
             // Strict parse: a malformed/empty 2xx body is a contract violation and MUST fail closed,
@@ -152,6 +153,13 @@ public final class RestTransport {
                 JsonNode node = readTreeStrict(resp.body());
                 return onSuccess.apply(node, status);
             } catch (RuntimeException e) {
+                if (kind.isCreate()) {
+                    return new TransportFailure<>(
+                            new PaymentError.TransportUnavailable(
+                                    true,
+                                    "Ambiguous create response: " + e.getClass().getSimpleName()),
+                            true);
+                }
                 return new Rejected<>(new PaymentError.InternalFailure(
                         "Malformed successful response body: " + e.getClass().getSimpleName()));
             }
