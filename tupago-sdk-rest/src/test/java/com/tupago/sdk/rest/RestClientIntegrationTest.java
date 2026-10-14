@@ -1,5 +1,8 @@
 package com.tupago.sdk.rest;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.tupago.sdk.core.auth.CredentialProvider;
 import com.tupago.sdk.core.banxico.BanxicoMessage;
 import com.tupago.sdk.core.config.TimeoutConfig;
@@ -84,6 +87,41 @@ class RestClientIntegrationTest {
             + "  \"futureField\":{\"x\":1}"
             + "},"
             + "\"emisor\":\"EMISOR\",\"banco\":\"BANCO\"}";
+
+    @Test
+    void localRequestSerializationFailureIsRejectedWithoutRetryOrNetwork() {
+        ObjectMapper failingMapper = new ObjectMapper() {
+            @Override
+            public byte[] writeValueAsBytes(Object value) throws JsonProcessingException {
+                throw new JsonProcessingException("synthetic serialization failure") {};
+            }
+        };
+        RetryPolicy retrying = new RetryPolicy() {
+            @Override
+            public int maxAttempts() {
+                return 4;
+            }
+
+            @Override
+            public Duration baseDelay() {
+                return Duration.ZERO;
+            }
+        };
+        RestClientConfig cfg = RestClientConfig.builder()
+                .baseUri(backend.baseUri())
+                .credentials(provider())
+                .retryPolicy(retrying)
+                .objectMapper(failingMapper)
+                .build();
+        client = RestTupagoClient.create(cfg);
+
+        PaymentOperationResult<BanxicoMessage> result = client.payments().createQr(qr("serialize-fail"));
+
+        assertThat(result).isInstanceOf(Rejected.class);
+        Rejected<?> rejected = (Rejected<?>) result;
+        assertThat(rejected.error()).isInstanceOf(PaymentError.InternalFailure.class);
+        assertThat(backend.requestCount()).isZero();
+    }
 
     // ---- A. CreateQr ----
 
