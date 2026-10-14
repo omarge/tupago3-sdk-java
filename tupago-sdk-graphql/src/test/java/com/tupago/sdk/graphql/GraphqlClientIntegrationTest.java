@@ -89,6 +89,13 @@ class GraphqlClientIntegrationTest {
         assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.InternalFailure.class);
     }
 
+    private static void assertAmbiguousCreate(PaymentOperationResult<?> r) {
+        assertThat(r).isInstanceOf(TransportFailure.class);
+        TransportFailure<?> tf = (TransportFailure<?>) r;
+        assertThat(tf.mayHaveBeenSent()).isTrue();
+        assertThat(tf.retryAllowed()).isFalse();
+    }
+
     @SuppressWarnings("unchecked")
     private static <T> T successValue(PaymentOperationResult<?> r) {
         assertThat(r).isInstanceOf(Success.class);
@@ -187,28 +194,28 @@ class GraphqlClientIntegrationTest {
     void createQrStringFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
                 dataEnvelope("{\"createPagoQr\":\"not-an-object\"}")));
-        assertInternalFailure(client().payments().createQr(qr("k1")));
+        assertAmbiguousCreate(client().payments().createQr(qr("k1")));
     }
 
     @Test
     void createQrArrayFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
                 dataEnvelope("{\"createPagoQr\":[1,2,3]}")));
-        assertInternalFailure(client().payments().createQr(qr("k1")));
+        assertAmbiguousCreate(client().payments().createQr(qr("k1")));
     }
 
     @Test
     void createQrNullFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
                 dataEnvelope("{\"createPagoQr\":null}")));
-        assertInternalFailure(client().payments().createQr(qr("k1")));
+        assertAmbiguousCreate(client().payments().createQr(qr("k1")));
     }
 
     @Test
     void createQrEmptyObjectFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
                 dataEnvelope("{\"createPagoQr\":{}}")));
-        assertInternalFailure(client().payments().createQr(qr("k1")));
+        assertAmbiguousCreate(client().payments().createQr(qr("k1")));
     }
 
     @Test
@@ -216,13 +223,13 @@ class GraphqlClientIntegrationTest {
         // The REST-style {mensaje, emisor, banco} wrapper is NOT the GraphQL wire contract; it must fail closed.
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
                 dataEnvelope("{\"createPagoQr\":{\"mensaje\":{\"TYP\":1},\"emisor\":\"E\",\"banco\":\"B\"}}")));
-        assertInternalFailure(client().payments().createQr(qr("k1")));
+        assertAmbiguousCreate(client().payments().createQr(qr("k1")));
     }
 
     @Test
     void createQrMalformedEnvelopeFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, "this is not json"));
-        assertInternalFailure(client().payments().createQr(qr("k1")));
+        assertAmbiguousCreate(client().payments().createQr(qr("k1")));
     }
 
     @Test
@@ -276,7 +283,7 @@ class GraphqlClientIntegrationTest {
     void createTelefonicoNonTextualDetalleFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
                 dataEnvelope("{\"createPagoTelefonico\":{\"detalleResultado\":{\"id\":\"X\"},\"edoPet\":0}}")));
-        assertInternalFailure(client().payments().createTelefonico(telefonico("k1")));
+        assertAmbiguousCreate(client().payments().createTelefonico(telefonico("k1")));
     }
 
     // ========================= QR STATUS (C3) =========================
@@ -284,8 +291,9 @@ class GraphqlClientIntegrationTest {
     @Test
     void getQrStatusArraySuccess() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"pagoQrEstatusUsuario\":[{\"id\":\"1\",\"cc\":\"x\",\"mt\":10}]}")));
-        BanxicoMessage s = successValue(client().payments().getQrStatus(GetQrStatusRequest.of("IDC1")));
+                dataEnvelope("{\"pagoQrEstatusByCuenta\":[{\"id\":\"1\",\"cc\":\"x\",\"mt\":10}]}")));
+        BanxicoMessage s = successValue(client().payments().getQrStatus(GetQrStatusRequest.of("IDC1", 55L)));
+        assertThat(readLastBody().path("variables").path("idCuenta").asText()).isEqualTo("55");
         assertThat(s.transactions()).hasSize(1);
         assertThat(s.rawJson()).contains("\"id\":\"1\"");
     }
@@ -293,8 +301,8 @@ class GraphqlClientIntegrationTest {
     @Test
     void getQrStatusMalformedResponseFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"pagoQrEstatusUsuario\":\"not-an-array\"}")));
-        assertInternalFailure(client().payments().getQrStatus(GetQrStatusRequest.of("IDC1")));
+                dataEnvelope("{\"pagoQrEstatusByCuenta\":\"not-an-array\"}")));
+        assertInternalFailure(client().payments().getQrStatus(GetQrStatusRequest.of("IDC1", 55L)));
     }
 
     // ========================= TELEFONICO STATUS (C4) =========================
@@ -302,8 +310,9 @@ class GraphqlClientIntegrationTest {
     @Test
     void getTelefonicoStatusObjectSuccess() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"pagoTelefonicoEstatusUsuario\":{\"detalleResultado\":{\"id\":\"D1\"},\"edoPet\":0}}")));
-        BanxicoMessage s = successValue(client().payments().getTelefonicoStatus(GetTelefonicoStatusRequest.of("IDC1")));
+                dataEnvelope("{\"pagoTelefonicoEstatusByCuenta\":{\"detalleResultado\":{\"id\":\"D1\"},\"edoPet\":0}}")));
+        BanxicoMessage s = successValue(client().payments().getTelefonicoStatus(GetTelefonicoStatusRequest.of("IDC1", 55L)));
+        assertThat(readLastBody().path("variables").path("idCuenta").asText()).isEqualTo("55");
         assertThat(s.transactions()).hasSize(1);
         assertThat(s.rawJson()).contains("\"id\":\"D1\"");
     }
@@ -311,8 +320,8 @@ class GraphqlClientIntegrationTest {
     @Test
     void getTelefonicoStatusMalformedFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"pagoTelefonicoEstatusUsuario\":{}}")));
-        assertInternalFailure(client().payments().getTelefonicoStatus(GetTelefonicoStatusRequest.of("IDC1")));
+                dataEnvelope("{\"pagoTelefonicoEstatusByCuenta\":{}}")));
+        assertInternalFailure(client().payments().getTelefonicoStatus(GetTelefonicoStatusRequest.of("IDC1", 55L)));
     }
 
     // ========================= CLIENTE (C5) =========================
@@ -471,7 +480,7 @@ class GraphqlClientIntegrationTest {
     @Test
     void graphqlUnknownCodeFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200, errorsEnvelope(gqlError("TOTALLY_UNKNOWN"))));
-        assertInternalFailure(client().payments().createQr(qr("k1")));
+        assertAmbiguousCreate(client().payments().createQr(qr("k1")));
     }
 
     @Test

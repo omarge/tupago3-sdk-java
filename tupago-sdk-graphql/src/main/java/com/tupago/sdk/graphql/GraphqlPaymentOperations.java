@@ -107,12 +107,13 @@ final class GraphqlPaymentOperations implements PaymentOperations {
     public PaymentOperationResult<BanxicoMessage> getQrStatus(GetQrStatusRequest request) {
         Map<String, Object> variables = new LinkedHashMap<>();
         variables.put("idc", request.idc());
+        variables.put("idCuenta", request.idCuenta() == null ? null : request.idCuenta().toString());
         return transport.exchange(
                 com.tupago.sdk.core.retry.OperationKind.GET_QR_STATUS,
                 GraphqlQuery.GET_QR_STATUS, GraphqlQuery.GET_QR_STATUS_DOC, variables,
                 (data, status) -> {
-                    // data.pagoQrEstatusUsuario is a JSON array of transaction details (B22 array contract).
-                    JsonNode node = data.path("pagoQrEstatusUsuario");
+                    // Canonical C3 preserves explicit idCuenta via pagoQrEstatusByCuenta.
+                    JsonNode node = data.path("pagoQrEstatusByCuenta");
                     if (absent(node) || !node.isArray()) {
                         throw new IllegalStateException("GetQrStatus payload must be a JSON array");
                     }
@@ -124,15 +125,16 @@ final class GraphqlPaymentOperations implements PaymentOperations {
     public PaymentOperationResult<BanxicoMessage> getTelefonicoStatus(GetTelefonicoStatusRequest request) {
         Map<String, Object> variables = new LinkedHashMap<>();
         variables.put("idc", request.idc());
+        variables.put("idCuenta", request.idCuenta() == null ? null : request.idCuenta().toString());
         return transport.exchange(
                 com.tupago.sdk.core.retry.OperationKind.GET_TELEFONICO_STATUS,
                 GraphqlQuery.GET_TELEFONICO_STATUS, GraphqlQuery.GET_TELEFONICO_STATUS_DOC, variables,
                 (data, status) -> {
-                    // data.pagoTelefonicoEstatusUsuario is { detalleResultado: {Banxico OBJECT}, edoPet }.
-                    JsonNode node = data.path("pagoTelefonicoEstatusUsuario");
+                    // Canonical C4 preserves explicit idCuenta via pagoTelefonicoEstatusByCuenta.
+                    JsonNode node = data.path("pagoTelefonicoEstatusByCuenta");
                     if (absent(node)) {
                         throw new IllegalStateException(
-                                "GetTelefonicoStatus response missing 'pagoTelefonicoEstatusUsuario' data");
+                                "GetTelefonicoStatus response missing 'pagoTelefonicoEstatusByCuenta' data");
                     }
                     JsonNode detalle = node.path("detalleResultado");
                     if (detalle.isMissingNode() || detalle.isNull()) {

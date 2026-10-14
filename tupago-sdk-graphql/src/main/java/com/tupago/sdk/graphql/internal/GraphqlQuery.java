@@ -30,12 +30,12 @@ public final class GraphqlQuery {
             + "  createPagoTelefonico(input: $input, idempotencyKey: $idempotencyKey)"
             + "}";
 
-    public static final String GET_QR_STATUS_DOC = "query GetQrStatus($idc: String!) {"
-            + "  pagoQrEstatusUsuario(idc: $idc)"
+    public static final String GET_QR_STATUS_DOC = "query GetQrStatus($idc: String!, $idCuenta: ID!) {"
+            + "  pagoQrEstatusByCuenta(idc: $idc, idCuenta: $idCuenta)"
             + "}";
 
-    public static final String GET_TELEFONICO_STATUS_DOC = "query GetTelefonicoStatus($idc: String!) {"
-            + "  pagoTelefonicoEstatusUsuario(idc: $idc)"
+    public static final String GET_TELEFONICO_STATUS_DOC = "query GetTelefonicoStatus($idc: String!, $idCuenta: ID!) {"
+            + "  pagoTelefonicoEstatusByCuenta(idc: $idc, idCuenta: $idCuenta)"
             + "}";
 
     public static final String GET_CLIENTE_DOC = "query GetCliente($id: ID!) {"
