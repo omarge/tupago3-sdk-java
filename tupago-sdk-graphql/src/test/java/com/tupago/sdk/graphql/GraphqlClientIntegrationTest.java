@@ -568,6 +568,26 @@ class GraphqlClientIntegrationTest {
         }
     }
 
+    @Test
+    void createQrRedirectFailsClosedWithoutRetry() {
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(307, ""));
+        int before = backend.requestCount();
+        PaymentOperationResult<?> result = client("jwt", new BackoffRetryPolicy(3, Duration.ZERO), null)
+                .payments().createQr(qr("redirect-qr"));
+        assertAmbiguousCreate(result);
+        assertThat(backend.requestCount() - before).isEqualTo(1);
+    }
+
+    @Test
+    void createTelefonicoRedirectFailsClosedWithoutRetry() {
+        backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(302, ""));
+        int before = backend.requestCount();
+        PaymentOperationResult<?> result = client("jwt", new BackoffRetryPolicy(3, Duration.ZERO), null)
+                .payments().createTelefonico(telefonico("redirect-tel"));
+        assertAmbiguousCreate(result);
+        assertThat(backend.requestCount() - before).isEqualTo(1);
+    }
+
     // ========================= helpers =========================
 
     private JsonNode readLastBody() {
