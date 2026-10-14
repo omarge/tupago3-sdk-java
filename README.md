@@ -89,7 +89,9 @@ dependencies {
 
 ---
 
-## 5. Six canonical capabilities (cross-transport)\n\n> **IMPORTANT / IMPORTANTE:** The older illustrative route names in this section are superseded by the **authoritative exact wire contract** in the bilingual implementation manual below. Do not integrate using `/api/pago/qr` or `/api/pago/telefonico`.
+## 5. Six canonical capabilities (cross-transport)
+
+> **IMPORTANT / IMPORTANTE:** The older illustrative route names in this section are superseded by the **authoritative exact wire contract** in the bilingual implementation manual below. Do not integrate using `/api/pago/qr` or `/api/pago/telefonico`.
 
 | Capability | REST | GraphQL | gRPC |
 |------------|------|---------|------|
@@ -285,7 +287,28 @@ TlsConfig tls = TlsConfig.systemTrust();                 // public CA
 - PostgreSQL/backend remains the financial authority; the SDK stores no financial state.
 - No real Banxico/PSP calls are made by the SDK itself; financial operations require a reachable,
   authorized backend in your environment.
-\n\n---\n\n# Implementation manual / Manual de implementación\n\n## Manual ES — Implementación paso a paso\n\n**Índice:** [1. Requisitos](#manual-es--implementación-paso-a-paso) · [2. Instalación](#manual-es--implementación-paso-a-paso) · [3. Configuración](#manual-es--implementación-paso-a-paso) · [4. Ejemplo](#manual-es--implementación-paso-a-paso) · [5. Contrato C1–C6](#contrato-de-referencia--reference-contract) · [6. Seguridad y errores](#reglas-financieras--financial-safety-rules) · [7. Pruebas y distribución](#pruebas-y-aceptación--testing-and-acceptance)\n\n1. **Requisitos:** Java / Gradle + Maven Local. Disponer de acceso autorizado a backend3, credenciales JWT válidas y ambiente HTTPS, o laboratorio loopback explícitamente habilitado.\n2. **Instalación:** `./gradlew clean build -PjavaVersion=21` (or `-PjavaVersion=25`), then `./gradlew publishToMavenLocal -PjavaVersion=25`. Add `mavenLocal()` and `implementation 'com.tupago:tupago-sdk-rest:0.1.0'` (or `tupago-sdk-graphql` / root gRPC). Java 21 bytecode.\n3. **Configuración:** seleccionar el transporte soportado; suministrar endpoint real y JWT mediante variable de entorno o proveedor de credenciales. No usar puertos de laboratorio como defaults productivos.\n4. **Ejemplo de inicio:** ejecutar el ejemplo de abajo con los imports/exports públicos propios del SDK; sustituir los hostnames de ejemplo y consultar primero C5/C6.\n5. **Contrato:** consultar tabla C1–C6; en C3 y C4 conservar `idc` e `idCuenta`, y en C5 exigir perfil compuesto.\n6. **Errores y seguridad:** diferenciar `UnknownOutcome`, `PendingReconciliation`, `NOT_FOUND`, autenticación y permisos. Nunca reintentar creaciones automáticamente.\n7. **Validación:** `./gradlew clean build -PjavaVersion=25` and `./gradlew publishToMavenLocal -PjavaVersion=25`; build an independent Gradle consumer resolving Maven Local. For REST verify C5 composition; prefer `Success`/`Rejected`/`PendingReconciliation`/`TransportFailure` handling.\n\n### Ejemplo / Example (Java / Gradle + Maven Local)\n\n\`\`\`java\n// Java 21+; add import statements from the repository's existing modern usage examples.
+
+
+---
+
+# Implementation manual / Manual de implementación
+
+## Manual ES — Implementación paso a paso
+
+**Índice:** [1. Requisitos](#manual-es--implementación-paso-a-paso) · [2. Instalación](#manual-es--implementación-paso-a-paso) · [3. Configuración](#manual-es--implementación-paso-a-paso) · [4. Ejemplo](#manual-es--implementación-paso-a-paso) · [5. Contrato C1–C6](#contrato-de-referencia--reference-contract) · [6. Seguridad y errores](#reglas-financieras--financial-safety-rules) · [7. Pruebas y distribución](#pruebas-y-aceptación--testing-and-acceptance)
+
+1. **Requisitos:** Java / Gradle + Maven Local. Disponer de acceso autorizado a backend3, credenciales JWT válidas y ambiente HTTPS, o laboratorio loopback explícitamente habilitado.
+2. **Instalación:** `./gradlew clean build -PjavaVersion=21` (or `-PjavaVersion=25`), then `./gradlew publishToMavenLocal -PjavaVersion=25`. Add `mavenLocal()` and `implementation 'com.tupago:tupago-sdk-rest:0.1.0'` (or `tupago-sdk-graphql` / root gRPC). Java 21 bytecode.
+3. **Configuración:** seleccionar el transporte soportado; suministrar endpoint real y JWT mediante variable de entorno o proveedor de credenciales. No usar puertos de laboratorio como defaults productivos.
+4. **Ejemplo de inicio:** ejecutar el ejemplo de abajo con los imports/exports públicos propios del SDK; sustituir los hostnames de ejemplo y consultar primero C5/C6.
+5. **Contrato:** consultar tabla C1–C6; en C3 y C4 conservar `idc` e `idCuenta`, y en C5 exigir perfil compuesto.
+6. **Errores y seguridad:** diferenciar `UnknownOutcome`, `PendingReconciliation`, `NOT_FOUND`, autenticación y permisos. Nunca reintentar creaciones automáticamente.
+7. **Validación:** `./gradlew clean build -PjavaVersion=25` and `./gradlew publishToMavenLocal -PjavaVersion=25`; build an independent Gradle consumer resolving Maven Local. For REST verify C5 composition; prefer `Success`/`Rejected`/`PendingReconciliation`/`TransportFailure` handling.
+
+### Ejemplo / Example (Java / Gradle + Maven Local)
+
+\`\`\`java
+// Java 21+; add import statements from the repository's existing modern usage examples.
 CredentialProvider credentials = () -> System.getenv("TUPAGO_JWT");
 RestClientConfig cfg = RestClientConfig.builder()
     .baseUri("https://backend.example.com").credentials(credentials).build();
@@ -293,7 +316,22 @@ try (RestTupagoClient sdk = RestTupagoClient.create(cfg)) {
     var result = sdk.clientes().getCliente(GetClienteRequest.of(1L));
     // Only consume result.value() when result instanceof Success<?>.
     // C5 on REST performs client + catalog lookups and returns a composed profile.
-}\n\`\`\`\n\n## Manual EN — Step-by-step implementation\n\n**Contents:** [1. Prerequisites](#manual-en--step-by-step-implementation) · [2. Install](#manual-en--step-by-step-implementation) · [3. Configure](#manual-en--step-by-step-implementation) · [4. Example](#manual-en--step-by-step-implementation) · [5. C1–C6 wire contract](#contrato-de-referencia--reference-contract) · [6. Safety and errors](#reglas-financieras--financial-safety-rules) · [7. Verify and distribute](#pruebas-y-aceptación--testing-and-acceptance)\n\n1. **Prerequisites:** Java / Gradle + Maven Local; authorized backend3 credentials and a TLS-enabled endpoint (or explicitly authorized loopback lab).\n2. **Install:** `./gradlew clean build -PjavaVersion=21` (or `-PjavaVersion=25`), then `./gradlew publishToMavenLocal -PjavaVersion=25`. Add `mavenLocal()` and `implementation 'com.tupago:tupago-sdk-rest:0.1.0'` (or `tupago-sdk-graphql` / root gRPC). Java 21 bytecode.\n3. **Configure:** choose a supported transport; supply the endpoint and JWT through environment-backed credential providers. Do not copy lab hosts or ports into production.\n4. **Minimal example:** follow the SDK-specific example below. Replace placeholder endpoints and start with a C5/C6 read.\n5. **Contract:** consult the exact C1–C6 wire table. Preserve `idc`/`idCuenta` and require the full composed C5 profile.\n6. **Errors and security:** distinguish unknown financial outcomes, pending reconciliation, not-found and auth/ownership failures. Never automatically replay creates.\n7. **Verification:** `./gradlew clean build -PjavaVersion=25` and `./gradlew publishToMavenLocal -PjavaVersion=25`; build an independent Gradle consumer resolving Maven Local. For REST verify C5 composition; prefer `Success`/`Rejected`/`PendingReconciliation`/`TransportFailure` handling.\n\n## Contrato de referencia / Reference contract
+}
+\`\`\`
+
+## Manual EN — Step-by-step implementation
+
+**Contents:** [1. Prerequisites](#manual-en--step-by-step-implementation) · [2. Install](#manual-en--step-by-step-implementation) · [3. Configure](#manual-en--step-by-step-implementation) · [4. Example](#manual-en--step-by-step-implementation) · [5. C1–C6 wire contract](#contrato-de-referencia--reference-contract) · [6. Safety and errors](#reglas-financieras--financial-safety-rules) · [7. Verify and distribute](#pruebas-y-aceptación--testing-and-acceptance)
+
+1. **Prerequisites:** Java / Gradle + Maven Local; authorized backend3 credentials and a TLS-enabled endpoint (or explicitly authorized loopback lab).
+2. **Install:** `./gradlew clean build -PjavaVersion=21` (or `-PjavaVersion=25`), then `./gradlew publishToMavenLocal -PjavaVersion=25`. Add `mavenLocal()` and `implementation 'com.tupago:tupago-sdk-rest:0.1.0'` (or `tupago-sdk-graphql` / root gRPC). Java 21 bytecode.
+3. **Configure:** choose a supported transport; supply the endpoint and JWT through environment-backed credential providers. Do not copy lab hosts or ports into production.
+4. **Minimal example:** follow the SDK-specific example below. Replace placeholder endpoints and start with a C5/C6 read.
+5. **Contract:** consult the exact C1–C6 wire table. Preserve `idc`/`idCuenta` and require the full composed C5 profile.
+6. **Errors and security:** distinguish unknown financial outcomes, pending reconciliation, not-found and auth/ownership failures. Never automatically replay creates.
+7. **Verification:** `./gradlew clean build -PjavaVersion=25` and `./gradlew publishToMavenLocal -PjavaVersion=25`; build an independent Gradle consumer resolving Maven Local. For REST verify C5 composition; prefer `Success`/`Rejected`/`PendingReconciliation`/`TransportFailure` handling.
+
+## Contrato de referencia / Reference contract
 
 **ES.** Autoridad: backend3 `omarge/tupagoback3` `bbf06c02bda06221b2f214075a4bf2bdf3345eb0`. El JWT determina identidad y alcance de propietario; jamás hardcodear secretos. `idc`, `idCuenta` y claves bancarias son identificadores: conservar su representación y ceros iniciales.
 
@@ -328,4 +366,4 @@ try (RestTupagoClient sdk = RestTupagoClient.create(cfg)) {
 **EN — Sequence:** (1) build and test, (2) produce the exact artifact, (3) install into a separate **out-of-tree** consumer, (4) verify valid/missing/invalid JWT and C3–C6 against an isolated real backend3, (5) verify ownership and typed `NOT_FOUND`, (6) test C1/C2 only in an explicitly approved non-production financial sandbox, (7) record HEAD, CI and SHA256. Do not claim untested transports as E2E-certified.
 
 **Estado / Status:** local and read-only E2E certificates cover their **documented transports**, not production financial writes, Banxico/STP external calls, or real Microsoft Office host validation.
-\n
+
