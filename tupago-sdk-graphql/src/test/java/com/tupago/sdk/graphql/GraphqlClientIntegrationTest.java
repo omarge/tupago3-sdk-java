@@ -284,7 +284,7 @@ class GraphqlClientIntegrationTest {
     @Test
     void getQrStatusArraySuccess() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"pagoQrEstatusUsuario\":[{\"id\":\"1\",\"cc\":\"x\",\"mt\":10}]}")));
+                dataEnvelope("{\"pagoQrEstatusByCuenta\":[{\"id\":\"1\",\"cc\":\"x\",\"mt\":10}]}")));
         BanxicoMessage s = successValue(client().payments().getQrStatus(GetQrStatusRequest.of("IDC1")));
         assertThat(s.transactions()).hasSize(1);
         assertThat(s.rawJson()).contains("\"id\":\"1\"");
@@ -293,7 +293,7 @@ class GraphqlClientIntegrationTest {
     @Test
     void getQrStatusMalformedResponseFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"pagoQrEstatusUsuario\":\"not-an-array\"}")));
+                dataEnvelope("{\"pagoQrEstatusByCuenta\":\"not-an-array\"}")));
         assertInternalFailure(client().payments().getQrStatus(GetQrStatusRequest.of("IDC1")));
     }
 
@@ -302,7 +302,7 @@ class GraphqlClientIntegrationTest {
     @Test
     void getTelefonicoStatusObjectSuccess() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"pagoTelefonicoEstatusUsuario\":{\"detalleResultado\":{\"id\":\"D1\"},\"edoPet\":0}}")));
+                dataEnvelope("{\"pagoTelefonicoEstatusByCuenta\":{\"detalleResultado\":{\"id\":\"D1\"},\"edoPet\":0}}")));
         BanxicoMessage s = successValue(client().payments().getTelefonicoStatus(GetTelefonicoStatusRequest.of("IDC1")));
         assertThat(s.transactions()).hasSize(1);
         assertThat(s.rawJson()).contains("\"id\":\"D1\"");
@@ -311,7 +311,7 @@ class GraphqlClientIntegrationTest {
     @Test
     void getTelefonicoStatusMalformedFailsClosed() {
         backend.setResponse(GraphqlTestBackend.ScriptedResponse.json(200,
-                dataEnvelope("{\"pagoTelefonicoEstatusUsuario\":{}}")));
+                dataEnvelope("{\"pagoTelefonicoEstatusByCuenta\":{}}")));
         assertInternalFailure(client().payments().getTelefonicoStatus(GetTelefonicoStatusRequest.of("IDC1")));
     }
 
