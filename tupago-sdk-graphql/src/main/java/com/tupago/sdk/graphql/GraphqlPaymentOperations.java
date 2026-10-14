@@ -105,6 +105,10 @@ final class GraphqlPaymentOperations implements PaymentOperations {
 
     @Override
     public PaymentOperationResult<BanxicoMessage> getQrStatus(GetQrStatusRequest request) {
+        if (request.idCuenta() == null) {
+            return new Rejected<>(new PaymentError.ValidationFailure(
+                    "GetQrStatus requires idCuenta for the canonical ByCuenta contract"));
+        }
         Map<String, Object> variables = new LinkedHashMap<>();
         variables.put("idc", request.idc());
         variables.put("idCuenta", Long.toString(request.idCuenta()));
@@ -123,6 +127,10 @@ final class GraphqlPaymentOperations implements PaymentOperations {
 
     @Override
     public PaymentOperationResult<BanxicoMessage> getTelefonicoStatus(GetTelefonicoStatusRequest request) {
+        if (request.idCuenta() == null) {
+            return new Rejected<>(new PaymentError.ValidationFailure(
+                    "GetTelefonicoStatus requires idCuenta for the canonical ByCuenta contract"));
+        }
         Map<String, Object> variables = new LinkedHashMap<>();
         variables.put("idc", request.idc());
         variables.put("idCuenta", Long.toString(request.idCuenta()));
