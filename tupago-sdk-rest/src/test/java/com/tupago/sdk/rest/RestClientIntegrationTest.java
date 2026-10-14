@@ -75,6 +75,13 @@ class RestClientIntegrationTest {
                 "5512345678", 5, IdempotencyKey.of(key));
     }
 
+    private static void assertAmbiguousCreate(PaymentOperationResult<?> r) {
+        assertThat(r).isInstanceOf(TransportFailure.class);
+        TransportFailure<?> tf = (TransportFailure<?>) r;
+        assertThat(tf.mayHaveBeenSent()).isTrue();
+        assertThat(tf.retryAllowed()).isFalse();
+    }
+
     private static final String CREATE_QR_OBJECT = "{"
             + "\"mensaje\":{"
             + "  \"TYP\":1,"
@@ -113,15 +120,14 @@ class RestClientIntegrationTest {
                 "{\"mensaje\":\"{\\\"TYP\\\":1}\",\"emisor\":\"E\",\"banco\":\"B\"}"));
         client = client(null, null);
         PaymentOperationResult<BanxicoMessage> r = client.payments().createQr(qr("k"));
-        assertThat(r).isInstanceOf(Rejected.class);
-        assertThat(((Rejected<?>) r).error()).isInstanceOf(PaymentError.InternalFailure.class);
+        assertAmbiguousCreate(r);
     }
 
     @Test
     void createQrMensajeAbsentFailsClosed() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200, "{\"emisor\":\"E\",\"banco\":\"B\"}"));
         client = client(null, null);
-        assertInternalFailure(client.payments().createQr(qr("k")));
+        assertAmbiguousCreate(client.payments().createQr(qr("k")));
     }
 
     @Test
@@ -156,7 +162,7 @@ class RestClientIntegrationTest {
         backend.setResponse(TestBackend.ScriptedResponse.json(200,
                 "{\"detalleResultado\":{\"id\":\"X\"},\"edoPet\":0}"));
         client = client(null, null);
-        assertInternalFailure(client.payments().createTelefonico(telefonico("k")));
+        assertAmbiguousCreate(client.payments().createTelefonico(telefonico("k")));
     }
 
     @Test
@@ -321,7 +327,7 @@ class RestClientIntegrationTest {
         backend.setResponse(TestBackend.ScriptedResponse.json(202,
                 "{\"type\":\"https://example/other\",\"title\":\"x\"}"));
         PaymentOperationResult<BanxicoMessage> r = client(null, null).payments().createQr(qr("k"));
-        assertInternalFailure(r);
+        assertAmbiguousCreate(r);
     }
 
     // ---- idempotency ----
