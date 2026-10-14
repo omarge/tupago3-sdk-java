@@ -166,6 +166,13 @@ public final class RestTransport {
                         "Malformed successful response body: " + e.getClass().getSimpleName()));
             }
         }
+        // Never follow redirects for financial creates. A 3xx after dispatch is ambiguous:
+        // the backend or an intermediary may already have executed the payment.
+        if (kind.isCreate() && status >= 300 && status < 400) {
+            return new TransportFailure<>(
+                    new PaymentError.TransportUnavailable(true, "Unexpected redirect after create dispatch: HTTP " + status),
+                    true);
+        }
         // Error bodies are parsed tolerantly: the HTTP status code is authoritative for classification.
         PaymentError error = RestErrorTranslator.translate(status, readTreeOrNull(resp.body()));
         if (error instanceof PaymentError.TransportUnavailable tu) {
