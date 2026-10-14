@@ -233,6 +233,13 @@ public final class GraphqlTransport {
     }
 
     private <T> PaymentOperationResult<T> handleHttpError(OperationKind kind, int status, byte[] body) {
+        // A redirected create may already have executed; a 3xx must never be
+        // treated as a deterministic rejection or transparently resubmitted.
+        if (kind.isCreate() && status >= 300 && status < 400) {
+            return new TransportFailure<>(
+                    new PaymentError.TransportUnavailable(true, "Unexpected GraphQL create redirect: HTTP " + status),
+                    true);
+        }
         JsonNode root = readTreeOrNull(body);
         if (root != null && root.has("errors")) {
             JsonNode errors = root.get("errors");
