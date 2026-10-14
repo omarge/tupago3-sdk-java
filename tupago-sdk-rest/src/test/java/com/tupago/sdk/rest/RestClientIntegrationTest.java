@@ -141,7 +141,7 @@ class RestClientIntegrationTest {
     void createQrMalformedTopLevelJsonFailsClosed() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200, "this is not json"));
         client = client(null, null);
-        assertInternalFailure(client.payments().createQr(qr("k")));
+        assertAmbiguousCreate(client.payments().createQr(qr("k")));
     }
 
     // ---- B. CreateTelefonico ----
