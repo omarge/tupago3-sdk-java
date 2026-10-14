@@ -134,7 +134,7 @@ class RestClientIntegrationTest {
     void createQrMensajeNullFailsClosed() {
         backend.setResponse(TestBackend.ScriptedResponse.json(200, "{\"mensaje\":null,\"emisor\":\"E\"}"));
         client = client(null, null);
-        assertInternalFailure(client.payments().createQr(qr("k")));
+        assertAmbiguousCreate(client.payments().createQr(qr("k")));
     }
 
     @Test
@@ -170,7 +170,7 @@ class RestClientIntegrationTest {
         backend.setResponse(TestBackend.ScriptedResponse.json(200,
                 "{\"detalleResultado\":\"{not json\",\"edoPet\":0}"));
         client = client(null, null);
-        assertInternalFailure(client.payments().createTelefonico(telefonico("k")));
+        assertAmbiguousCreate(client.payments().createTelefonico(telefonico("k")));
     }
 
     // ---- C. QR Status ----
